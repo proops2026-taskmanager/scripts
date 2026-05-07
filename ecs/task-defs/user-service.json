@@ -1,0 +1,51 @@
+{
+  "family": "taskmanager-user-service",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "256",
+  "memory": "512",
+  "executionRoleArn": "arn:aws:iam::905418181527:role/taskmanager-ecs-execution-role",
+  "taskRoleArn": "arn:aws:iam::905418181527:role/taskmanager-ecs-task-role",
+  "containerDefinitions": [
+    {
+      "name": "user-service",
+      "image": "905418181527.dkr.ecr.eu-central-1.amazonaws.com/taskmanager-user-service:v2",
+      "essential": true,
+      "portMappings": [
+        {
+          "name": "http",
+          "containerPort": 3003,
+          "protocol": "tcp",
+          "appProtocol": "http"
+        }
+      ],
+      "environment": [
+        {"name": "NODE_ENV", "value": "production"},
+        {"name": "PORT",     "value": "3003"},
+        {"name": "DB_HOST",  "value": "postgres-user"},
+        {"name": "DB_PORT",  "value": "5432"},
+        {"name": "DB_NAME",  "value": "users"},
+        {"name": "DB_USER",  "value": "postgres"}
+      ],
+      "secrets": [
+        {"name": "DB_PASS",    "valueFrom": "taskmanager/DB_PASS"},
+        {"name": "JWT_SECRET", "valueFrom": "taskmanager/JWT_SECRET"}
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group":         "/ecs/taskmanager/user-service",
+          "awslogs-region":        "eu-central-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      },
+      "healthCheck": {
+        "command":     ["CMD-SHELL", "curl -sf http://localhost:3003/health || exit 1"],
+        "interval":    30,
+        "timeout":     5,
+        "retries":     3,
+        "startPeriod": 60
+      }
+    }
+  ]
+}
