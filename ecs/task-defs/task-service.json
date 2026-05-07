@@ -24,7 +24,7 @@
         {"name": "PORT",       "value": "3002"},
         {"name": "DB_HOST",    "value": "postgres-task"},
         {"name": "DB_PORT",    "value": "5432"},
-        {"name": "DB_NAME",    "value": "tasks"},
+        {"name": "DB_NAME",    "value": "tasks_db"},
         {"name": "DB_USER",    "value": "postgres"},
         {"name": "REDIS_HOST", "value": "redis"},
         {"name": "REDIS_PORT", "value": "6379"}
@@ -41,7 +41,7 @@
         }
       },
       "healthCheck": {
-        "command":     ["CMD-SHELL", "curl -sf http://localhost:3002/health || exit 1"],
+        "command":     ["CMD-SHELL", "wget -qO- http://localhost:3002/health || exit 1"],
         "interval":    30,
         "timeout":     5,
         "retries":     3,

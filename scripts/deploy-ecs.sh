@@ -101,14 +101,18 @@ preflight() {
     || die "AWS credentials not active — run: source ./scripts/aws-session-init.sh"
   log "  account=$account region=$AWS_REGION"
 
-  # Required secrets — report ALL missing at once
-  local missing_vars=()
-  [[ -n "${DB_PASS:-}"    ]] || missing_vars+=("export DB_PASS='<your-db-password>'")
-  [[ -n "${JWT_SECRET:-}" ]] || missing_vars+=("export JWT_SECRET='$(openssl rand -base64 32)'")
-  if [[ ${#missing_vars[@]} -gt 0 ]]; then
-    err "missing required environment variables — set all before re-running:"
-    for v in "${missing_vars[@]}"; do err "  $v"; done
-    exit 1
+  # Required secrets — skip validation in dry-run (no AWS calls touch real values)
+  if [[ $DRY_RUN -eq 0 ]]; then
+    local missing_vars=()
+    [[ -n "${DB_PASS:-}"    ]] || missing_vars+=("export DB_PASS='<your-db-password>'")
+    [[ -n "${JWT_SECRET:-}" ]] || missing_vars+=("export JWT_SECRET='$(openssl rand -base64 32)'")
+    if [[ ${#missing_vars[@]} -gt 0 ]]; then
+      err "missing required environment variables — set all before re-running:"
+      for v in "${missing_vars[@]}"; do err "  $v"; done
+      exit 1
+    fi
+  else
+    log "  [dry-run] skipping secrets validation — DB_PASS and JWT_SECRET not required"
   fi
 
   # Task defs directory
@@ -222,7 +226,7 @@ ensure_security_groups() {
       --protocol tcp --port 3000 --source-group "$ALB_SG_ID"
     run aws ec2 authorize-security-group-ingress \
       --group-id "$ECS_SG_ID" \
-      --protocol tcp --port 3001 --source-group "$ALB_SG_ID"
+      --protocol tcp --port 8080 --source-group "$ALB_SG_ID"
     # Allow all traffic within ECS SG (Service Connect inter-service calls)
     run aws ec2 authorize-security-group-ingress \
       --group-id "$ECS_SG_ID" \
@@ -279,7 +283,7 @@ ensure_alb() {
   phase_start "alb" "ensuring Application Load Balancer"
 
   if [[ $DRY_RUN -eq 1 ]]; then
-    log "  [dry-run] would create taskmanager-alb, frontend TG (3000), api-gateway TG (3001), listener port 80"
+    log "  [dry-run] would create taskmanager-alb, frontend TG (3000), api-gateway TG (8080), listener port 80"
     ALB_DNS="<alb-dns-pending>"; FRONTEND_TG_ARN="<frontend-tg-pending>"; APIGW_TG_ARN="<apigw-tg-pending>"
     phase_ok "[dry-run] alb phase complete — http://<alb-dns-pending>"; return
   fi
@@ -337,7 +341,7 @@ ensure_alb() {
   if [[ -z "$APIGW_TG_ARN" ]]; then
     APIGW_TG_ARN=$(run aws elbv2 create-target-group \
       --name taskmanager-api-gateway-tg \
-      --protocol HTTP --port 3001 \
+      --protocol HTTP --port 8080 \
       --vpc-id "$VPC_ID" \
       --target-type ip \
       --health-check-path /health \
@@ -418,7 +422,7 @@ deploy_services() {
         create_args+=(--load-balancers "targetGroupArn=${FRONTEND_TG_ARN},containerName=frontend-service,containerPort=3000")
         create_args+=(--health-check-grace-period-seconds 60)
       elif [[ "$svc" == "api-gateway" ]]; then
-        create_args+=(--load-balancers "targetGroupArn=${APIGW_TG_ARN},containerName=api-gateway,containerPort=3001")
+        create_args+=(--load-balancers "targetGroupArn=${APIGW_TG_ARN},containerName=api-gateway,containerPort=8080")
         create_args+=(--health-check-grace-period-seconds 60)
       fi
 
@@ -478,6 +482,10 @@ configure_autoscale() {
 # ══════════════════════════════════════════════════════════════════════════════
 wait_stable() {
   phase_start "wait-stable" "polling until all 7 services RUNNING (timeout=5min)"
+  if [[ $DRY_RUN -eq 1 ]]; then
+    phase_ok "[dry-run] skipping stability wait — no services were created"
+    return
+  fi
   local deadline=$(( $(date +%s) + 300 ))
 
   while true; do
@@ -511,6 +519,11 @@ wait_stable() {
 # ══════════════════════════════════════════════════════════════════════════════
 verify() {
   phase_start "verify" "health-checking ALB endpoints"
+  if [[ $DRY_RUN -eq 1 ]]; then
+    phase_ok "[dry-run] skipping verify — no ALB was created"
+    printf '\n=== DRY-RUN COMPLETE — no AWS resources were created ===\n'
+    return
+  fi
 
   local endpoints=(
     "http://${ALB_DNS}/health|frontend"

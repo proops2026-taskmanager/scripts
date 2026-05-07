@@ -14,16 +14,20 @@
       "portMappings": [
         {
           "name": "http",
-          "containerPort": 3001,
+          "containerPort": 8080,
           "protocol": "tcp",
           "appProtocol": "http"
         }
       ],
       "environment": [
-        {"name": "NODE_ENV",          "value": "production"},
-        {"name": "PORT",              "value": "3001"},
-        {"name": "TASK_SERVICE_URL",  "value": "http://task-service:3002"},
-        {"name": "USER_SERVICE_URL",  "value": "http://user-service:3003"}
+        {"name": "NODE_ENV",         "value": "production"},
+        {"name": "PORT",             "value": "8080"},
+        {"name": "CORS_ORIGIN",      "value": "*"},
+        {"name": "TASK_SERVICE_URL", "value": "http://task-service:3002"},
+        {"name": "USER_SERVICE_URL", "value": "http://user-service:3001"}
+      ],
+      "secrets": [
+        {"name": "JWT_SECRET", "valueFrom": "taskmanager/JWT_SECRET"}
       ],
       "logConfiguration": {
         "logDriver": "awslogs",
@@ -34,7 +38,7 @@
         }
       },
       "healthCheck": {
-        "command":     ["CMD-SHELL", "curl -sf http://localhost:3001/health || exit 1"],
+        "command":     ["CMD-SHELL", "wget -qO- http://localhost:8080/health || exit 1"],
         "interval":    30,
         "timeout":     5,
         "retries":     3,

@@ -26,6 +26,13 @@
           "awslogs-region":        "eu-central-1",
           "awslogs-stream-prefix": "ecs"
         }
+      },
+      "healthCheck": {
+        "command":     ["CMD-SHELL", "redis-cli ping || exit 1"],
+        "interval":    10,
+        "timeout":     5,
+        "retries":     3,
+        "startPeriod": 15
       }
     }
   ]

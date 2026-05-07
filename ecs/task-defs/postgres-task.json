@@ -19,7 +19,7 @@
         }
       ],
       "environment": [
-        {"name": "POSTGRES_DB",   "value": "tasks"},
+        {"name": "POSTGRES_DB",   "value": "tasks_db"},
         {"name": "POSTGRES_USER", "value": "postgres"}
       ],
       "secrets": [
@@ -32,6 +32,13 @@
           "awslogs-region":        "eu-central-1",
           "awslogs-stream-prefix": "ecs"
         }
+      },
+      "healthCheck": {
+        "command":     ["CMD-SHELL", "pg_isready -U postgres -d tasks_db || exit 1"],
+        "interval":    10,
+        "timeout":     5,
+        "retries":     5,
+        "startPeriod": 30
       }
     }
   ]
