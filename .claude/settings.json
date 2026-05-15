@@ -1,0 +1,26 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "printf '\\n[AUTO-SKILL CHECK] Scan this conversation for any non-obvious technical problem you solved — a workaround, constraint, AWS/K8s/Terraform quirk, or behavioural rule. Ask: is it already in /Users/mac/Desktop/chautv-proops2026/memory/skills-ledger.md? Would knowing it earlier have saved 10+ minutes? If both answers are yes/no respectively: call /save-skill immediately, without waiting for the user to ask. If nothing qualifies, stay silent.'"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'output=$(cat); if echo \"$output\" | grep -qiE \"(AccessDenied|error|failed|exception|cannot|denied|not authorized|no such|timed out)\" && echo \"$output\" | grep -qiE \"(fixed|resolved|workaround|instead|use|correct)\"; then printf \"\\n[SKILL-SIGNAL] This Bash output shows an error that was diagnosed and fixed. Strong candidate for /save-skill — check if the solution pattern is already in skills-ledger.md.\"; fi'"
+          }
+        ]
+      }
+    ]
+  }
+}

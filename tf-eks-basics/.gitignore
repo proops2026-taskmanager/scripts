@@ -1,0 +1,21 @@
+# Terraform local state — NEVER commit; remote state is in S3
+terraform.tfstate
+terraform.tfstate.backup
+terraform.tfstate.*.backup
+
+# Terraform working directory — provider binaries, modules, lock files
+.terraform/
+
+# Variable files that may contain secrets
+*.tfvars
+!*.tfvars.example
+
+# Crash logs
+crash.log
+crash.*.log
+
+# Override files
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
