@@ -7,6 +7,10 @@
           {
             "type": "command",
             "command": "printf '\\n[AUTO-SKILL CHECK] Scan this conversation for any non-obvious technical problem you solved — a workaround, constraint, AWS/K8s/Terraform quirk, or behavioural rule. Ask: is it already in /Users/mac/Desktop/chautv-proops2026/memory/skills-ledger.md? Would knowing it earlier have saved 10+ minutes? If both answers are yes/no respectively: call /save-skill immediately, without waiting for the user to ask. If nothing qualifies, stay silent.'"
+          },
+          {
+            "type": "command",
+            "command": "bash /Users/mac/Desktop/proops2026-taskmanager/scripts/session-sync-hook.sh 2>/dev/null || true"
           }
         ]
       }

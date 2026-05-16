@@ -1,0 +1,34 @@
+# Session state — ephemeral, never commit
+.session-synced
+
+# Local-only directories (each has its own git repo)
+api-gateway/
+task-service/
+user-service/
+frontend-service/
+k8s/
+eks/
+terraform/
+
+# Runtime
+logs/
+tmp/
+*.log
+
+# Node
+node_modules/
+dist/
+
+# OS
+.DS_Store
+
+# Claude Code internal (session-specific, not shared)
+SESSION_HANDOVER_STATE.md
+PROJECT-MEMORY.md
+CRAFT-PROMPT-microservice-docs.md
+draft-program/
+demo-repository/
+collections/
+e2e-tests/
+charts/
+memory/
