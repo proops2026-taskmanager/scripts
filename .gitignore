@@ -31,4 +31,6 @@ demo-repository/
 collections/
 e2e-tests/
 charts/
-memory/
+memory/*
+# Exception: git-workflows.md is a shared team doc (AC-01 — IRD-30)
+!memory/git-workflows.md
