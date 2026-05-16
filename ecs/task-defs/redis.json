@@ -1,0 +1,39 @@
+{
+  "family": "taskmanager-redis",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "256",
+  "memory": "512",
+  "executionRoleArn": "arn:aws:iam::905418181527:role/taskmanager-ecs-execution-role",
+  "taskRoleArn": "arn:aws:iam::905418181527:role/taskmanager-ecs-task-role",
+  "containerDefinitions": [
+    {
+      "name": "redis",
+      "image": "public.ecr.aws/docker/library/redis:7-alpine",
+      "essential": true,
+      "portMappings": [
+        {
+          "name": "redis",
+          "containerPort": 6379,
+          "protocol": "tcp"
+        }
+      ],
+      "command": ["redis-server", "--appendonly", "yes"],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group":         "/ecs/taskmanager/redis",
+          "awslogs-region":        "eu-central-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      },
+      "healthCheck": {
+        "command":     ["CMD-SHELL", "redis-cli ping || exit 1"],
+        "interval":    10,
+        "timeout":     5,
+        "retries":     3,
+        "startPeriod": 15
+      }
+    }
+  ]
+}

@@ -1,0 +1,43 @@
+{
+  "family": "taskmanager-frontend-service",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "256",
+  "memory": "512",
+  "executionRoleArn": "arn:aws:iam::905418181527:role/taskmanager-ecs-execution-role",
+  "taskRoleArn": "arn:aws:iam::905418181527:role/taskmanager-ecs-task-role",
+  "containerDefinitions": [
+    {
+      "name": "frontend-service",
+      "image": "905418181527.dkr.ecr.eu-central-1.amazonaws.com/taskmanager-frontend-service:v2",
+      "essential": true,
+      "portMappings": [
+        {
+          "name": "http",
+          "containerPort": 3000,
+          "protocol": "tcp",
+          "appProtocol": "http"
+        }
+      ],
+      "environment": [
+        {"name": "NODE_ENV", "value": "production"},
+        {"name": "PORT",     "value": "3000"}
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group":         "/ecs/taskmanager/frontend-service",
+          "awslogs-region":        "eu-central-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      },
+      "healthCheck": {
+        "command":     ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/health || exit 1"],
+        "interval":    30,
+        "timeout":     5,
+        "retries":     3,
+        "startPeriod": 60
+      }
+    }
+  ]
+}

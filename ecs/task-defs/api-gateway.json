@@ -1,0 +1,49 @@
+{
+  "family": "taskmanager-api-gateway",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "256",
+  "memory": "512",
+  "executionRoleArn": "arn:aws:iam::905418181527:role/taskmanager-ecs-execution-role",
+  "taskRoleArn": "arn:aws:iam::905418181527:role/taskmanager-ecs-task-role",
+  "containerDefinitions": [
+    {
+      "name": "api-gateway",
+      "image": "905418181527.dkr.ecr.eu-central-1.amazonaws.com/taskmanager-api-gateway:v2",
+      "essential": true,
+      "portMappings": [
+        {
+          "name": "http",
+          "containerPort": 8080,
+          "protocol": "tcp",
+          "appProtocol": "http"
+        }
+      ],
+      "environment": [
+        {"name": "NODE_ENV",         "value": "production"},
+        {"name": "PORT",             "value": "8080"},
+        {"name": "CORS_ORIGIN",      "value": "*"},
+        {"name": "TASK_SERVICE_URL", "value": "http://task-service:3002"},
+        {"name": "USER_SERVICE_URL", "value": "http://user-service:3001"}
+      ],
+      "secrets": [
+        {"name": "JWT_SECRET", "valueFrom": "taskmanager/JWT_SECRET"}
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group":         "/ecs/taskmanager/api-gateway",
+          "awslogs-region":        "eu-central-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      },
+      "healthCheck": {
+        "command":     ["CMD-SHELL", "wget -qO- http://localhost:8080/health || exit 1"],
+        "interval":    30,
+        "timeout":     5,
+        "retries":     3,
+        "startPeriod": 60
+      }
+    }
+  ]
+}

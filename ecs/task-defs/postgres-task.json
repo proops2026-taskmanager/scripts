@@ -1,0 +1,45 @@
+{
+  "family": "taskmanager-postgres-task",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "executionRoleArn": "arn:aws:iam::905418181527:role/taskmanager-ecs-execution-role",
+  "taskRoleArn": "arn:aws:iam::905418181527:role/taskmanager-ecs-task-role",
+  "containerDefinitions": [
+    {
+      "name": "postgres-task",
+      "image": "public.ecr.aws/docker/library/postgres:15-alpine",
+      "essential": true,
+      "portMappings": [
+        {
+          "name": "postgres",
+          "containerPort": 5432,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        {"name": "POSTGRES_DB",   "value": "tasks_db"},
+        {"name": "POSTGRES_USER", "value": "postgres"}
+      ],
+      "secrets": [
+        {"name": "POSTGRES_PASSWORD", "valueFrom": "taskmanager/DB_PASS"}
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group":         "/ecs/taskmanager/postgres-task",
+          "awslogs-region":        "eu-central-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      },
+      "healthCheck": {
+        "command":     ["CMD-SHELL", "pg_isready -U postgres -d tasks_db || exit 1"],
+        "interval":    10,
+        "timeout":     5,
+        "retries":     5,
+        "startPeriod": 30
+      }
+    }
+  ]
+}
