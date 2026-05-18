@@ -34,3 +34,5 @@ charts/
 memory/*
 # Exception: git-workflows.md is a shared team doc (AC-01 — IRD-30)
 !memory/git-workflows.md
+# Exception: github-actions.md is the CI/CD reference doc (AC-08 — IRD-31)
+!memory/github-actions.md
