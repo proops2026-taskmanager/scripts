@@ -45,16 +45,26 @@ jobs:
 
 ---
 
-## §3 — Project-Specific Commands (task-service)
+## §3 — Project-Specific Commands (scripts repo — Day 31)
+
+This repo is a scripts + infrastructure repo. The real CI commands are shellcheck + JSON validation, not npm test.
+
+**`lint` job:**
 
 | Step | Command | Notes |
 |------|---------|-------|
-| Install | `npm ci` | Reads `package-lock.json`; fails if lock is stale |
-| Build (lint job) | `npm run build` → `tsc` | TypeScript strict mode compile check |
-| Test | `npm test` → `jest --runInBand --forceExit` | `--runInBand`: sequential (needed for shared DB state); `--forceExit`: kills Jest after done |
-| Test env | `DOTENV_CONFIG_PATH=.env.test` | jest setupFile loads dotenv; CI overrides `DATABASE_URL` via env block so `.env.test` is ignored |
+| Install shellcheck | `sudo apt-get install -y shellcheck` | Ubuntu runners have apt; shellcheck not pre-installed |
+| Lint all shell scripts | `shellcheck -x --severity=warning scripts/*.sh scripts/lib/*.sh ecr-push.sh healthcheck.sh` | `-x` follows source statements; `--severity=warning` ignores SC1091 info messages about missing sourced files |
 
-**PostgreSQL service required in test job:**
+**`validate` job (needs: lint):**
+
+| Step | Command | Notes |
+|------|---------|-------|
+| Setup Node | `actions/setup-node@v4` node 20, `cache: 'npm'` | Pins toolchain; cache keys on `package-lock.json` hash |
+| Install | `npm ci` | Proves lockfile is committed and in sync |
+| Validate ECS task defs | `for f in ecs/task-defs/*.json; do python3 -m json.tool "$f" > /dev/null; done` | Malformed task def = silent `register-task-definition` failure in prod |
+
+**For task-service tests (Day 24+ — when services are in CI scope):**
 ```yaml
 services:
   postgres:
@@ -64,17 +74,14 @@ services:
       POSTGRES_PASSWORD: testpass
       POSTGRES_DB: tasks_test_db
     ports:
-      - 5432:5432
+      - 5434:5432        # map to 5434 to match .env.test DATABASE_URL
     options: >-
       --health-cmd pg_isready
       --health-interval 10s
       --health-timeout 5s
       --health-retries 5
-env:
-  DATABASE_URL: postgresql://testuser:testpass@localhost:5432/tasks_test_db
 ```
-
-**Why override DATABASE_URL:** `.env.test` uses port 5434 (local dev). CI service always binds to 5432. dotenv does not overwrite already-set env vars — so setting it in the workflow env block takes precedence without touching `.env.test`.
+Test command: `DOTENV_CONFIG_PATH=.env.test jest --runInBand --forceExit`
 
 ---
 
@@ -131,9 +138,8 @@ jobs:
 
 | Secret Name | Day | Purpose |
 |-------------|-----|---------|
-| `SESSION_SECRET` | Day 23 ✅ | Demonstrate masking; used in task-service app |
+| `DOCKERHUB_TOKEN` | Day 31 ✅ | Added today — proved `***` masking; length 19 confirmed in log |
 | `DOCKERHUB_USERNAME` | Day 24 | `docker/login-action` |
-| `DOCKERHUB_TOKEN` | Day 24 | `docker/login-action` |
 | `AWS_ACCESS_KEY_ID` | Day 24/25 | ECR push via `aws-actions/configure-aws-credentials` |
 | `AWS_SECRET_ACCESS_KEY` | Day 24/25 | ECR push |
 | `DISCORD_WEBHOOK` | Day 24 | Failure notifications |
@@ -144,9 +150,11 @@ jobs:
 
 | Error | Root Cause | Fix |
 |-------|-----------|-----|
-| `non-fast-forward` push rejected | Remote had `9ddba9d add task service` commit added after our local diverged from `4f18045` | `git pull origin main --no-rebase` → resolved conflict in `tasks.ts` (kept HEAD = full G-06 implementation), merged `ioredis` dep from remote |
-| `CONFLICT (content): tasks.ts` | Remote's minimal version of routes vs our full G-06 implementation | Kept HEAD entirely — remote was an older/partial version; discarded `=======`/`>>>>>>>` markers |
-| IDE warning `Context access might be invalid: SESSION_SECRET` | VS Code GitHub Actions extension can't verify secret exists in repo settings at edit time | Not an error — false positive. Secret added via `gh secret set` before push |
+| `Dependencies lock file is not found` | `package-lock.json` existed locally but was never committed — `actions/setup-node@v4 cache: 'npm'` requires it to be in the repo | `git add package-lock.json && git commit` |
+| `ENOENT: no such file or directory, open 'package.json'` | `package.json` also untracked — CI clones the repo and finds neither file | `git add package.json && git commit` |
+| `SC2148: Tips depend on target shell and yours is unknown` (shellcheck error) | Library files (`scripts/lib/*.sh`) had no shebang and no `# shellcheck shell=bash` directive — shellcheck couldn't determine the target shell | Added `# shellcheck shell=bash` as first line of each lib file |
+| `SC2034: PHASE appears unused` (shellcheck warning) | `PHASE="main"` in `deploy-eks.sh` was set but never read — dead variable from refactoring | Removed the dead assignment |
+| `shellcheck exit: 1` despite only info messages | Default shellcheck severity includes `info` (SC1091 source-not-found) — exit 1 on any message | Added `--severity=warning` flag to ignore info-level messages |
 
 ---
 
