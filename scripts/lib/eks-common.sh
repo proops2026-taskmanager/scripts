@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # eks-common.sh — Logging, dry-run wrapper, phase helpers, preflight.
 # Sourced by deploy-eks.sh. Requires NAMESPACE, MANIFESTS_DIR, DRY_RUN, SCRIPT_DIR
 # to already be set by the caller before sourcing.

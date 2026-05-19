@@ -57,7 +57,6 @@ main() {
   phase_ingress      # Phase 10 — Ingress routing rules + ELB URL
   phase_hpa          # Phase 11 — Metrics Server + HPA objects
 
-  PHASE="main"
   log "OK    deploy complete — namespace=${NAMESPACE}"
   kubectl get pods --namespace="${NAMESPACE}"
 }

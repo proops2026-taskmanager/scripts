@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # eks-data.sh — Secrets, ConfigMaps, StorageClass, StatefulSets, Migrations.
 # Sourced by deploy-eks.sh. Requires NAMESPACE, MANIFESTS_DIR, DRY_RUN, SCRIPT_DIR,
 # DB_PASS, JWT_SECRET, and the helpers from eks-common.sh to already be in scope.
