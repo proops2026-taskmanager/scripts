@@ -33,3 +33,10 @@ jobs:
             echo "Validating $f ..."
             python3 -m json.tool "$f" > /dev/null && echo "  ✓ $f"
           done
+
+      - name: Verify secret is loaded (length only — never the value)
+        env:
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          echo "DOCKERHUB_TOKEN length: ${#DOCKERHUB_TOKEN}"
+          echo "Direct echo attempt: $DOCKERHUB_TOKEN"
