@@ -1,0 +1,14 @@
+name: Hello
+on: [push, workflow_dispatch]
+
+jobs:
+  hello:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Print context
+        run: |
+          echo "Triggered by: $GITHUB_ACTOR"
+          echo "Branch:       $GITHUB_REF_NAME"
+          echo "Commit:       $GITHUB_SHA"
+          echo "Repo:         $GITHUB_REPOSITORY"
+          echo "Project:      ProOps2026 Task Manager"
