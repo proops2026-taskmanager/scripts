@@ -1,7 +1,6 @@
 {
   "dependencies": {
-    "fakefakefake-not-real": "^1.0.0",
-    "@tanstack/react-query": "^5.99.1",
+"@tanstack/react-query": "^5.99.1",
     "react": "^19.2.5",
     "react-router-dom": "^7.14.1"
   },
