@@ -1,14 +1,23 @@
-name: Hello
+name: CI
 on: [push, workflow_dispatch]
 
 jobs:
-  hello:
+  lint:
     runs-on: ubuntu-latest
     steps:
-      - name: Print context
+      - uses: actions/checkout@v4
+      - name: Lint
         run: |
-          echo "Triggered by: $GITHUB_ACTOR"
-          echo "Branch:       $GITHUB_REF_NAME"
-          echo "Commit:       $GITHUB_SHA"
-          echo "Repo:         $GITHUB_REPOSITORY"
-          echo "Project:      ProOps2026 Task Manager"
+          echo "Lint started at $(date)"
+          sleep 10
+          echo "Lint done"
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test
+        run: |
+          echo "Test started at $(date)"
+          sleep 10
+          echo "Test done"
