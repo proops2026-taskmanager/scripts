@@ -60,7 +60,7 @@ jobs:
           git clone --depth 1 "${BASE}/task-service.git" task-service
           git clone --depth 1 "${BASE}/user-service.git" user-service
           git clone --depth 1 "${BASE}/api-gateway.git" api-gateway
-          git clone --depth 1 "${BASE}/frontend-service.git" frontend-service
+          # frontend-service repo not yet created on GitHub — add back when available
 
       - uses: actions/setup-node@v4
         with:
@@ -80,8 +80,7 @@ jobs:
       - name: Test api-gateway
         run: cd api-gateway && npm ci && npm test
 
-      - name: Test frontend-service
-        run: cd frontend-service && npm ci && npm test
+      # frontend-service: skipped until repo exists on GitHub
 
   # ── Job 3: build-image ────────────────────────────────────────────────────────
   # Builds ALL 4 service images. Matrix runs 4 jobs in parallel.
@@ -98,8 +97,7 @@ jobs:
             repo: proops2026-taskmanager/user-service
           - service: api-gateway
             repo: proops2026-taskmanager/api-gateway
-          - service: frontend-service
-            repo: proops2026-taskmanager/frontend-service
+          # frontend-service: add back when repo exists on GitHub
     steps:
       - uses: actions/checkout@v4
 
