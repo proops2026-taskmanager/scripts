@@ -29,21 +29,34 @@ jobs:
 
   # ── Job 2: test ───────────────────────────────────────────────────────────────
   # Runs immediately (no needs:). Parallel with lint.
-  # One postgres service with two port mappings — matches each service's .env.test:
+  # Two postgres containers — one per service, matching each .env.test exactly:
   #   task-service .env.test → localhost:5434/tasks_test_db
   #   user-service .env.test → localhost:5433/users_test_db
+  # (Docker does not reliably map two host ports to the same container port)
   test:
     runs-on: ubuntu-latest
     services:
-      postgres:
+      postgres-task:
         image: postgres:15
         env:
           POSTGRES_USER: testuser
           POSTGRES_PASSWORD: testpass
           POSTGRES_DB: tasks_test_db
         ports:
-          - 5433:5432   # user-service test port
-          - 5434:5432   # task-service test port
+          - 5434:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      postgres-user:
+        image: postgres:15
+        env:
+          POSTGRES_USER: testuser
+          POSTGRES_PASSWORD: testpass
+          POSTGRES_DB: users_test_db
+        ports:
+          - 5433:5432
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
@@ -65,11 +78,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-
-      - name: Create users_test_db in postgres
-        run: |
-          PGPASSWORD=testpass psql -h localhost -p 5433 -U testuser -d tasks_test_db \
-            -c "CREATE DATABASE users_test_db;"
 
       - name: Test task-service
         run: cd task-service && npm ci && npm test
