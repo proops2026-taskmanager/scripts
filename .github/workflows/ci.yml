@@ -52,33 +52,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Checkout task-service
-        uses: actions/checkout@v4
-        with:
-          repository: proops2026-taskmanager/task-service
-          path: task-service
-          token: ''
-
-      - name: Checkout user-service
-        uses: actions/checkout@v4
-        with:
-          repository: proops2026-taskmanager/user-service
-          path: user-service
-          token: ''
-
-      - name: Checkout api-gateway
-        uses: actions/checkout@v4
-        with:
-          repository: proops2026-taskmanager/api-gateway
-          path: api-gateway
-          token: ''
-
-      - name: Checkout frontend-service
-        uses: actions/checkout@v4
-        with:
-          repository: proops2026-taskmanager/frontend-service
-          path: frontend-service
-          token: ''
+      - name: Clone service repos
+        run: |
+          git clone --depth 1 https://github.com/proops2026-taskmanager/task-service.git task-service
+          git clone --depth 1 https://github.com/proops2026-taskmanager/user-service.git user-service
+          git clone --depth 1 https://github.com/proops2026-taskmanager/api-gateway.git api-gateway
+          git clone --depth 1 https://github.com/proops2026-taskmanager/frontend-service.git frontend-service
 
       - uses: actions/setup-node@v4
         with:
@@ -121,12 +100,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Checkout ${{ matrix.service }}
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ matrix.repo }}
-          path: ${{ matrix.service }}
-          token: ''
+      - name: Clone ${{ matrix.service }}
+        run: git clone --depth 1 https://github.com/${{ matrix.repo }}.git ${{ matrix.service }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
