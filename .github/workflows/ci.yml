@@ -12,7 +12,6 @@ permissions:
 jobs:
   # ── Job 1: lint ───────────────────────────────────────────────────────────────
   # Runs immediately (no needs:). Parallel with test.
-  # Cheapest signal — catches shell script bugs in ~10s.
   lint:
     runs-on: ubuntu-latest
     steps:
@@ -30,18 +29,21 @@ jobs:
 
   # ── Job 2: test ───────────────────────────────────────────────────────────────
   # Runs immediately (no needs:). Parallel with lint.
-  # Spins a real Postgres service container so unit tests hit a real DB.
+  # One postgres service with two port mappings — matches each service's .env.test:
+  #   task-service .env.test → localhost:5434/tasks_test_db
+  #   user-service .env.test → localhost:5433/users_test_db
   test:
     runs-on: ubuntu-latest
     services:
       postgres:
         image: postgres:15
         env:
-          POSTGRES_USER: taskuser
-          POSTGRES_PASSWORD: taskpassword
-          POSTGRES_DB: taskmanager
+          POSTGRES_USER: testuser
+          POSTGRES_PASSWORD: testpass
+          POSTGRES_DB: tasks_test_db
         ports:
-          - 5432:5432
+          - 5433:5432   # user-service test port
+          - 5434:5432   # task-service test port
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
@@ -56,34 +58,70 @@ jobs:
           repository: proops2026-taskmanager/task-service
           path: task-service
 
+      - name: Checkout user-service
+        uses: actions/checkout@v4
+        with:
+          repository: proops2026-taskmanager/user-service
+          path: user-service
+
+      - name: Checkout api-gateway
+        uses: actions/checkout@v4
+        with:
+          repository: proops2026-taskmanager/api-gateway
+          path: api-gateway
+
+      - name: Checkout frontend-service
+        uses: actions/checkout@v4
+        with:
+          repository: proops2026-taskmanager/frontend-service
+          path: frontend-service
+
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - name: Install dependencies
-        run: cd task-service && npm ci
+      - name: Create users_test_db in postgres
+        run: |
+          PGPASSWORD=testpass psql -h localhost -p 5433 -U testuser -d tasks_test_db \
+            -c "CREATE DATABASE users_test_db;"
 
-      - name: Run unit tests
-        env:
-          DATABASE_URL: postgresql://taskuser:taskpassword@localhost:5432/taskmanager
-        run: cd task-service && npm test
+      - name: Test task-service
+        run: cd task-service && npm ci && npm test
+
+      - name: Test user-service
+        run: cd user-service && npm ci && npm test
+
+      - name: Test api-gateway
+        run: cd api-gateway && npm ci && npm test
+
+      - name: Test frontend-service
+        run: cd frontend-service && npm ci && npm test
 
   # ── Job 3: build-image ────────────────────────────────────────────────────────
-  # Waits for BOTH lint and test to pass before building.
-  # Pushes to GHCR with commit SHA tag (+ latest as supplemental).
+  # Builds ALL 4 service images. Matrix runs 4 jobs in parallel.
+  # Each image tagged: ghcr.io/proops2026-taskmanager/<service>:sha-<sha>
   build-image:
     runs-on: ubuntu-latest
     needs: [lint, test]
-    outputs:
-      image: ${{ steps.meta.outputs.tags }}
+    strategy:
+      matrix:
+        include:
+          - service: task-service
+            repo: proops2026-taskmanager/task-service
+          - service: user-service
+            repo: proops2026-taskmanager/user-service
+          - service: api-gateway
+            repo: proops2026-taskmanager/api-gateway
+          - service: frontend-service
+            repo: proops2026-taskmanager/frontend-service
     steps:
       - uses: actions/checkout@v4
 
-      - name: Checkout task-service
+      - name: Checkout ${{ matrix.service }}
         uses: actions/checkout@v4
         with:
-          repository: proops2026-taskmanager/task-service
-          path: task-service
+          repository: ${{ matrix.repo }}
+          path: ${{ matrix.service }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -93,33 +131,30 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          # GITHUB_TOKEN is auto-generated per run — no manual secrets needed
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata (tags + labels)
+      - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository }}/task-service
+          images: ghcr.io/proops2026-taskmanager/${{ matrix.service }}
           tags: |
             type=sha,format=long
             type=raw,value=latest
 
-      - name: Build and push to GHCR
+      - name: Build and push ${{ matrix.service }}
         uses: docker/build-push-action@v5
         with:
-          context: ./task-service
+          context: ./${{ matrix.service }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          # GHA layer cache — second build must be < 60s (IRD-32 NFR-4)
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
 
   # ── Job 4: deploy ─────────────────────────────────────────────────────────────
-  # Spins an ephemeral kind cluster in the runner.
-  # Updates manifest with real SHA tag, applies K8s YAML, waits for rollout.
-  # Evidence: kubectl describe pod must show Image: ghcr.io/...:sha
+  # Waits for ALL 4 build-image matrix jobs before proceeding.
+  # Deploys task-service + postgres to kind for smoke verification.
   deploy:
     runs-on: ubuntu-latest
     needs: [build-image]
@@ -132,9 +167,9 @@ jobs:
           cluster_name: ci-${{ github.run_id }}
           wait: 120s
 
-      - name: Update image tag in manifest
+      - name: Update task-service image tag in manifest
         run: |
-          IMAGE="ghcr.io/${{ github.repository }}/task-service:sha-${{ github.sha }}"
+          IMAGE="ghcr.io/proops2026-taskmanager/task-service:sha-${{ github.sha }}"
           sed -i "s|image:.*taskmanager-task-service.*|image: ${IMAGE}|" \
             ci/k8s/task-svc-deployment.yaml
           echo "Updated manifest to: ${IMAGE}"
@@ -148,14 +183,13 @@ jobs:
 
       - name: Create task-svc-secret Secret
         run: |
-          # In CI: kind cluster has no external DB — we deploy a postgres pod
           kubectl create secret generic task-svc-secret \
             --from-literal=DATABASE_URL="postgresql://taskuser:taskpassword@postgres-svc:5432/taskmanager" \
             --namespace=default
 
       - name: Deploy postgres to kind cluster
         run: |
-          kubectl apply -f - <<EOF
+          kubectl apply -f - <<'EOF'
           apiVersion: v1
           kind: ConfigMap
           metadata:
@@ -219,8 +253,7 @@ jobs:
           kubectl describe pod -l app=task-service | grep -E "Image:|Status:"
 
   # ── Job 5: e2e-uat ────────────────────────────────────────────────────────────
-  # Runs smoke test against the kind cluster deployed in the deploy job.
-  # Verifies the one main user flow: task create → list → delete.
+  # Smoke test: task create → list → delete against kind cluster.
   e2e-uat:
     runs-on: ubuntu-latest
     needs: [deploy]
@@ -236,7 +269,6 @@ jobs:
       - name: Port-forward task-service
         run: |
           kubectl port-forward svc/task-service 3002:3002 &
-          # Give port-forward time to establish before smoke test hits it
           sleep 5
 
       - name: Run smoke E2E (create → list → delete)
