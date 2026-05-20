@@ -57,24 +57,28 @@ jobs:
         with:
           repository: proops2026-taskmanager/task-service
           path: task-service
+          token: ''
 
       - name: Checkout user-service
         uses: actions/checkout@v4
         with:
           repository: proops2026-taskmanager/user-service
           path: user-service
+          token: ''
 
       - name: Checkout api-gateway
         uses: actions/checkout@v4
         with:
           repository: proops2026-taskmanager/api-gateway
           path: api-gateway
+          token: ''
 
       - name: Checkout frontend-service
         uses: actions/checkout@v4
         with:
           repository: proops2026-taskmanager/frontend-service
           path: frontend-service
+          token: ''
 
       - uses: actions/setup-node@v4
         with:
@@ -122,6 +126,7 @@ jobs:
         with:
           repository: ${{ matrix.repo }}
           path: ${{ matrix.service }}
+          token: ''
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
