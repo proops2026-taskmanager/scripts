@@ -80,9 +80,13 @@ jobs:
           node-version: '20'
 
       - name: Test task-service
+        env:
+          DATABASE_URL: postgresql://testuser:testpass@localhost:5434/tasks_test_db
         run: cd task-service && npm ci && npm test
 
       - name: Test user-service
+        env:
+          DATABASE_URL: postgresql://testuser:testpass@localhost:5433/users_test_db
         run: cd user-service && npm ci && npm test
 
       - name: Test api-gateway
