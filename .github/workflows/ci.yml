@@ -1,7 +1,18 @@
 name: CI
-on: [push, pull_request]
+
+on:
+  push:
+  pull_request:
+
+# IRD-32: workflow-level permissions — contents: read, packages: write
+permissions:
+  contents: read
+  packages: write
 
 jobs:
+  # ── Job 1: lint ───────────────────────────────────────────────────────────────
+  # Runs immediately (no needs:). Parallel with test.
+  # Cheapest signal — catches shell script bugs in ~10s.
   lint:
     runs-on: ubuntu-latest
     steps:
@@ -12,11 +23,30 @@ jobs:
 
       - name: Lint shell scripts
         run: |
-          shellcheck -x --severity=warning scripts/*.sh scripts/lib/*.sh ecr-push.sh healthcheck.sh
+          shellcheck -x --severity=warning \
+            scripts/*.sh scripts/lib/*.sh \
+            ecr-push.sh healthcheck.sh \
+            e2e-tests/smoke/task-api.sh
 
-  validate:
+  # ── Job 2: test ───────────────────────────────────────────────────────────────
+  # Runs immediately (no needs:). Parallel with lint.
+  # Spins a real Postgres service container so unit tests hit a real DB.
+  test:
     runs-on: ubuntu-latest
-    needs: lint
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: taskuser
+          POSTGRES_PASSWORD: taskpassword
+          POSTGRES_DB: taskmanager
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
 
@@ -24,19 +54,180 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
+          cache-dependency-path: task-service/package-lock.json
 
-      - run: npm ci
+      - name: Install dependencies
+        run: cd task-service && npm ci
 
-      - name: Validate ECS task definitions
-        run: |
-          for f in ecs/task-defs/*.json; do
-            echo "Validating $f ..."
-            python3 -m json.tool "$f" > /dev/null && echo "  ✓ $f"
-          done
-
-      - name: Verify secret is loaded (length only — never the value)
+      - name: Run unit tests
         env:
-          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          DATABASE_URL: postgresql://taskuser:taskpassword@localhost:5432/taskmanager
+        run: cd task-service && npm test
+
+  # ── Job 3: build-image ────────────────────────────────────────────────────────
+  # Waits for BOTH lint and test to pass before building.
+  # Pushes to GHCR with commit SHA tag (+ latest as supplemental).
+  build-image:
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+    outputs:
+      image: ${{ steps.meta.outputs.tags }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          # GITHUB_TOKEN is auto-generated per run — no manual secrets needed
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags + labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}/task-service
+          tags: |
+            type=sha,format=long
+            type=raw,value=latest
+
+      - name: Build and push to GHCR
+        uses: docker/build-push-action@v5
+        with:
+          context: ./task-service
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # GHA layer cache — second build must be < 60s (IRD-32 NFR-4)
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ── Job 4: deploy ─────────────────────────────────────────────────────────────
+  # Spins an ephemeral kind cluster in the runner.
+  # Updates manifest with real SHA tag, applies K8s YAML, waits for rollout.
+  # Evidence: kubectl describe pod must show Image: ghcr.io/...:sha
+  deploy:
+    runs-on: ubuntu-latest
+    needs: [build-image]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: ci-${{ github.run_id }}
+          wait: 120s
+
+      - name: Update image tag in manifest
         run: |
-          echo "DOCKERHUB_TOKEN length: ${#DOCKERHUB_TOKEN}"
-          echo "Direct echo attempt: $DOCKERHUB_TOKEN"
+          IMAGE="ghcr.io/${{ github.repository }}/task-service:sha-${{ github.sha }}"
+          sed -i "s|image:.*taskmanager-task-service.*|image: ${IMAGE}|" \
+            ci/k8s/task-svc-deployment.yaml
+          echo "Updated manifest to: ${IMAGE}"
+          grep "image:" ci/k8s/task-svc-deployment.yaml
+
+      - name: Create task-svc-cm ConfigMap
+        run: |
+          kubectl create configmap task-svc-cm \
+            --from-literal=PORT=3002 \
+            --namespace=default
+
+      - name: Create task-svc-secret Secret
+        run: |
+          # In CI: kind cluster has no external DB — we deploy a postgres pod
+          kubectl create secret generic task-svc-secret \
+            --from-literal=DATABASE_URL="postgresql://taskuser:taskpassword@postgres-svc:5432/taskmanager" \
+            --namespace=default
+
+      - name: Deploy postgres to kind cluster
+        run: |
+          kubectl apply -f - <<EOF
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: postgres-cm
+            namespace: default
+          data:
+            POSTGRES_USER: taskuser
+            POSTGRES_PASSWORD: taskpassword
+            POSTGRES_DB: taskmanager
+          ---
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: postgres-svc
+            namespace: default
+          spec:
+            selector:
+              app: postgres
+            ports:
+              - port: 5432
+                targetPort: 5432
+          ---
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: postgres
+            namespace: default
+          spec:
+            replicas: 1
+            selector:
+              matchLabels:
+                app: postgres
+            template:
+              metadata:
+                labels:
+                  app: postgres
+              spec:
+                containers:
+                  - name: postgres
+                    image: postgres:15
+                    envFrom:
+                      - configMapRef:
+                          name: postgres-cm
+                    ports:
+                      - containerPort: 5432
+          EOF
+
+      - name: Wait for postgres rollout
+        run: kubectl rollout status deployment/postgres --timeout=120s
+
+      - name: Apply task-service manifests
+        run: kubectl apply -f ci/k8s/
+
+      - name: Wait for task-service rollout
+        # IRD-32: mandatory — a crashing Pod must NOT count as a passing deploy
+        run: kubectl rollout status deployment/task-service --timeout=180s
+
+      - name: Evidence — verify SHA in running Pod
+        # IRD-32 §3: this output is the mentor verification artifact
+        run: |
+          kubectl describe pod -l app=task-service | grep -E "Image:|Status:"
+
+  # ── Job 5: e2e-uat ────────────────────────────────────────────────────────────
+  # Runs smoke test against the kind cluster deployed in the deploy job.
+  # Verifies the one main user flow: task create → list → delete.
+  e2e-uat:
+    runs-on: ubuntu-latest
+    needs: [deploy]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore kind cluster context
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: ci-${{ github.run_id }}
+          install_only: true
+
+      - name: Port-forward task-service
+        run: |
+          kubectl port-forward svc/task-service 3002:3002 &
+          # Give port-forward time to establish before smoke test hits it
+          sleep 5
+
+      - name: Run smoke E2E (create → list → delete)
+        run: BASE_URL=http://localhost:3002 bash e2e-tests/smoke/task-api.sh
