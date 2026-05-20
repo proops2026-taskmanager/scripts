@@ -53,11 +53,14 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Clone service repos
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          git clone --depth 1 https://github.com/proops2026-taskmanager/task-service.git task-service
-          git clone --depth 1 https://github.com/proops2026-taskmanager/user-service.git user-service
-          git clone --depth 1 https://github.com/proops2026-taskmanager/api-gateway.git api-gateway
-          git clone --depth 1 https://github.com/proops2026-taskmanager/frontend-service.git frontend-service
+          BASE="https://x-access-token:${GH_TOKEN}@github.com/proops2026-taskmanager"
+          git clone --depth 1 "${BASE}/task-service.git" task-service
+          git clone --depth 1 "${BASE}/user-service.git" user-service
+          git clone --depth 1 "${BASE}/api-gateway.git" api-gateway
+          git clone --depth 1 "${BASE}/frontend-service.git" frontend-service
 
       - uses: actions/setup-node@v4
         with:
@@ -101,7 +104,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Clone ${{ matrix.service }}
-        run: git clone --depth 1 https://github.com/${{ matrix.repo }}.git ${{ matrix.service }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/${{ matrix.repo }}.git" ${{ matrix.service }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
