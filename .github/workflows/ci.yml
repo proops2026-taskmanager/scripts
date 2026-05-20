@@ -87,6 +87,8 @@ jobs:
       - name: Test user-service
         env:
           DATABASE_URL: postgresql://testuser:testpass@localhost:5433/users_test_db
+          JWT_SECRET: test_secret_minimum_32_characters_long
+          JWT_EXPIRES_IN: 24h
         run: cd user-service && npm ci && npm test
 
       - name: Test api-gateway
