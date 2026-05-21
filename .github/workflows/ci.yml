@@ -82,7 +82,7 @@ jobs:
       - name: Test task-service
         env:
           DATABASE_URL: postgresql://testuser:testpass@localhost:5434/tasks_test_db
-        run: cd task-service && npm ci && npm test && false  # deliberate failure — CI drill AC-07
+        run: cd task-service && npm ci && npm test
 
       - name: Test user-service
         env:
