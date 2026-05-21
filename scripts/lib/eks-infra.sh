@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # eks-infra.sh — Ingress Controller, Ingress routing rules, HPA + Metrics Server.
 # Sourced by deploy-eks.sh. Requires NAMESPACE, MANIFESTS_DIR, DRY_RUN,
 # and the helpers from eks-common.sh to already be in scope.

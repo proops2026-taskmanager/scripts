@@ -1,136 +1,146 @@
-# /start-session — Begin a Task Manager Session (Parallel)
+# /start-session — Begin a Task Manager Session
 
-Run this at the start of every session. Spawns three sub-agents simultaneously
-so context is fully loaded in ~15 seconds instead of ~60 seconds sequentially.
+Run this at the start of every session. Executes all checks directly — no
+background agents. Each step prints its status live before running.
+
+Target: complete in under 20 seconds.
 
 ---
 
 ## Execution Model
 
-**Do not read files yourself. Spawn all three agents in a single message
-with `run_in_background: true`. Wait for all three to return, then merge.**
+**Do NOT spawn sub-agents. Do NOT use run_in_background.**
+Run every check yourself using Read and Bash tools directly.
+Print a one-line status before EACH tool call so the user sees live progress.
 
 ---
 
-## Step 1 — Spawn Three Parallel Agents
+## Steps — run in order, print status before each
 
-Send one message containing all three Agent tool calls at once:
+### [1/5] Skills Ledger
 
-### Agent A — Hub Identity + Skill Ledger Check
+Print: `🔍 [1/5] Checking Hub skills-ledger for #new tags...`
+
+Read: `/Users/mac/Desktop/chautv-proops2026/memory/skills-ledger.md`
+
+Scan every line for `#new`. Record: CLEAN or list of skill names with #new.
+
+Print result immediately:
+- CLEAN → `✅ Skills ledger: clean`
+- Found → `⚠️  Skills ledger: N #new tag(s) found — [names]`
+
+### [2/5] Project State
+
+Print: `🔍 [2/5] Reading WIP.md...`
+
+Read: `/Users/mac/Desktop/proops2026-taskmanager/docs/WIP.md`
+
+Extract and print immediately:
 ```
-subagent_type: Explore
-run_in_background: true
-prompt: |
-  Read these two files and report back — nothing else, no tool calls beyond Read:
-
-  1. /Users/mac/Desktop/chautv-proops2026/CLAUDE.md
-     Extract: identity summary (2 sentences), operating persona, NEVER rules.
-
-  2. /Users/mac/Desktop/chautv-proops2026/memory/skills-ledger.md
-     Scan every line for a #new tag.
-     Report: "CLEAN" if none found, or list skill names that have #new.
-
-  Return format:
-    HUB_IDENTITY: [2-sentence summary]
-    SKILLS_LEDGER: [CLEAN | list of #new skill names]
-```
-
-### Agent B — Project State
-```
-subagent_type: Explore
-run_in_background: true
-prompt: |
-  Read these two files and report back — nothing else, no tool calls beyond Read:
-
-  1. /Users/mac/Desktop/proops2026-taskmanager/docs/WIP.md
-     Extract:
-       - Last updated date
-       - Sprint Phase table: every row and its status
-       - Known Gaps table: open gaps only (not ✅ closed)
-       - Next Session Checklist: unchecked items only
-
-  2. /Users/mac/.claude/projects/-Users-mac-Desktop-proops2026-taskmanager/memory/MEMORY.md
-     Extract: current sprint state line, next phase line, any EKS/AWS state notes.
-
-  Return format:
-    WIP_UPDATED: [date]
-    PHASES: [table rows as bullet list]
-    OPEN_GAPS: [list or "none"]
-    CHECKLIST: [unchecked items as bullet list]
-    MEMORY_NOTES: [1-3 key lines from MEMORY.md]
+📋 WIP (updated [date]):
+  Current phase: [name of ⚠️ In Progress row, or last ✅ if all done]
+  Open gaps:     [G-XX HIGH/MED only, comma-separated, or "none"]
+  Next actions:  [first 3 unchecked checklist items, numbered]
 ```
 
-### Agent C — Git + AWS State
+### [3/5] Git Status
+
+Print: `🔍 [3/5] Checking git status across repos...`
+
+Run this single Bash command (10s timeout):
+```bash
+for repo in user-service task-service api-gateway frontend-service docs; do
+  out=$(git -C /Users/mac/Desktop/proops2026-taskmanager/$repo status --short 2>/dev/null)
+  if [ -n "$out" ]; then echo "DIRTY $repo"; else echo "CLEAN $repo"; fi
+done
 ```
-subagent_type: Explore
-run_in_background: true
-prompt: |
-  Run these read-only checks and report results. No writes, no side effects.
 
-  1. Git status across service repos:
-     git -C /Users/mac/Desktop/proops2026-taskmanager/user-service status --short 2>/dev/null || echo "no repo"
-     git -C /Users/mac/Desktop/proops2026-taskmanager/task-service status --short 2>/dev/null || echo "no repo"
-     git -C /Users/mac/Desktop/proops2026-taskmanager/api-gateway status --short 2>/dev/null || echo "no repo"
-     git -C /Users/mac/Desktop/proops2026-taskmanager/frontend-service status --short 2>/dev/null || echo "no repo"
-     git -C /Users/mac/Desktop/proops2026-taskmanager/docs status --short 2>/dev/null || echo "no repo"
+Print result immediately:
+- All clean → `✅ Git: all repos clean`
+- Dirty repos → `⚠️  Git dirty: [list repo names]`
 
-  2. EKS cluster status (fast check):
-     aws eks describe-cluster --name taskmanager-chau-lab --region eu-central-1 \
-       --query "cluster.status" --output text 2>/dev/null || echo "NOT_FOUND"
+### [4/5] EKS / Terraform State
 
-  Return format:
-    GIT_DIRTY: [list of repos with uncommitted changes, or "all clean"]
-    EKS_STATUS: [ACTIVE | NOT_FOUND | other status]
+Print: `🔍 [4/5] Checking EKS cluster (5s timeout)...`
+
+Run with strict 5-second timeout:
+```bash
+timeout 5 aws eks describe-cluster \
+  --name taskmanager-dev \
+  --region eu-central-1 \
+  --query "cluster.status" \
+  --output text 2>/dev/null || echo "NOT_FOUND"
+```
+
+Print result immediately:
+- ACTIVE → `🟢 EKS: ACTIVE — cluster is running (costs money)`
+- NOT_FOUND or timeout → `⚫ EKS: not running`
+
+### [5/5] Hub Identity
+
+Print: `🔍 [5/5] Loading Hub identity...`
+
+Read: `/Users/mac/Desktop/chautv-proops2026/CLAUDE.md`
+
+Extract operating persona (1 sentence). Print: `✅ Hub loaded: [persona line]`
+
+---
+
+## Final Output
+
+After all 5 steps, print the full session plan:
+
+```
+═══════════════════════════════════════
+  Session Ready — Task Manager
+  Date: [today]  |  EKS: [ACTIVE 🟢 / Down ⚫]
+═══════════════════════════════════════
+
+[If #new tags found — print this block:]
+  ⚠️  BLOCKER: Hub skills-ledger has [N] new pattern(s):
+      [list each skill name]
+      These may require IRD updates before implementation.
+      → Run !hub-sync now, or type "skip" to continue anyway.
+
+Sprint phase:
+  [current ⚠️ In Progress phase name, or "All complete — pick next"]
+
+Open gaps (HIGH/MED):
+  [list G-XX items with priority, or "None blocking"]
+
+Next 3 actions:
+  1. [first unchecked checklist item]
+  2. [second]
+  3. [third]
+
+Git:
+  [dirty repo list or "all clean"]
+
+[If AWS work in checklist:]
+  AWS reminder: source ./scripts/aws-session-init.sh
 ```
 
 ---
 
-## Step 2 — Wait and Merge
+## Gate: #new Tags
 
-When all three agents return, merge their output into the session plan:
+After printing the session plan, if skills-ledger had #new tags:
 
-```
-=== Session Ready — Task Manager ===
-Date: [today]  |  EKS: [ACTIVE / DOWN]
+**STOP and ask:**
+> "Hub skills-ledger has [N] new pattern(s) tagged `#new`: [names].
+> Run `!hub-sync` to push them to the IRDs before we start, or type **skip**?"
 
-Hub skills-ledger: [✅ Clean  |  ⚠️ N #new tags — run !hub-sync before proceeding]
+Do not proceed to implementation until the user replies.
 
-Sprint phases:
-  [paste PHASES from Agent B, emoji ✅/☐ preserved]
-
-Open gaps:
-  [paste OPEN_GAPS from Agent B, or "None"]
-
-Next checklist items:
-  [paste CHECKLIST from Agent B]
-
-Git state:
-  [paste GIT_DIRTY from Agent C]
-
-First action:
-  → [derive from checklist + EKS status: if EKS=ACTIVE and checklist has EKS steps, lead with that]
-  → [if #new tags found: STOP — run !hub-sync first]
-
-AWS reminder (only if EKS=ACTIVE or checklist has AWS steps):
-  source ./scripts/aws-session-init.sh  ← if script exists
-```
-
----
-
-## Step 3 — Gate on #new Tags
-
-- **If `SKILLS_LEDGER` from Agent A = anything other than CLEAN:**
-  Print the warning and STOP. Do not proceed to implementation until user
-  responds with "run !hub-sync" or "skip".
-
-- **If CLEAN:** proceed immediately, no prompt.
+If CLEAN: no gate, session is ready immediately.
 
 ---
 
 ## Rules
 
-- Always spawn all three agents in parallel — never read files sequentially
-- Never invent task statuses — Agent B reads WIP.md, that is ground truth
-- The merge in Step 2 is done by the main agent, not a fourth sub-agent
-- If any agent fails (file not found, AWS timeout), note the failure in the
-  session plan and continue — don't abort the session
+- Never spawn sub-agents or use run_in_background — it hides failures
+- Always print the `🔍 [N/5] ...` line BEFORE the tool call, not after
+- AWS check MUST use `timeout 5` — never let it hang
+- If any Read fails (file missing), print `❌ [step]: file not found` and continue
+- If git Bash fails, print `❌ git check failed` and continue
+- Total time budget: under 20 seconds

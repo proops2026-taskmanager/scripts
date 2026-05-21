@@ -2,13 +2,14 @@
 .session-synced
 
 # Local-only directories (each has its own git repo)
-api-gateway/
-task-service/
-user-service/
-frontend-service/
-k8s/
-eks/
-terraform/
+# Anchored with / so they only match at repo root, not nested paths like ci/k8s/
+/api-gateway/
+/task-service/
+/user-service/
+/frontend-service/
+/k8s/
+/eks/
+/terraform/
 
 # Runtime
 logs/
@@ -29,8 +30,11 @@ CRAFT-PROMPT-microservice-docs.md
 draft-program/
 demo-repository/
 collections/
-e2e-tests/
 charts/
+# e2e-tests tracked — smoke script needed by CI pipeline
+# Exception: e2e-tests/smoke/ is the UAT smoke suite (AC-05 — IRD-32)
 memory/*
 # Exception: git-workflows.md is a shared team doc (AC-01 — IRD-30)
 !memory/git-workflows.md
+# Exception: github-actions.md is the CI/CD reference doc (AC-08 — IRD-31)
+!memory/github-actions.md

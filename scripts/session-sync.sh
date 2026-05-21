@@ -172,11 +172,10 @@ cmd_merge() {
 cmd_push() {
   require_on_main
 
-  # Guard: must have at least one commit staged or already committed
-  local status
-  status="$(git status --porcelain)"
-  if [[ -n "$status" ]]; then
-    die "Uncommitted changes found. Commit first:\n  git commit -m \"feat(scope): ...\""
+  # Guard: block on tracked changes only (staged or unstaged); ignore untracked
+  # files and submodule state changes — those are not blocking for main push
+  if ! git diff --quiet 2>/dev/null || ! git diff --cached --quiet 2>/dev/null; then
+    die "Tracked uncommitted changes found. Commit first:\n  git commit -m \"feat(scope): ...\""
   fi
 
   log "Pushing '$MAIN' → $REMOTE/$MAIN ..."
