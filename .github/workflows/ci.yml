@@ -166,6 +166,20 @@ jobs:
           cluster_name: ci-${{ github.run_id }}
           wait: 120s
 
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull task-service image and load into kind
+        run: |
+          IMAGE="ghcr.io/proops2026-taskmanager/task-service:sha-${{ github.sha }}"
+          docker pull "${IMAGE}"
+          kind load docker-image "${IMAGE}" --name ci-${{ github.run_id }}
+          echo "Loaded: ${IMAGE}"
+
       - name: Update task-service image tag in manifest
         run: |
           IMAGE="ghcr.io/proops2026-taskmanager/task-service:sha-${{ github.sha }}"
@@ -252,18 +266,110 @@ jobs:
           kubectl describe pod -l app=task-service | grep -E "Image:|Status:"
 
   # ── Job 5: e2e-uat ────────────────────────────────────────────────────────────
-  # Smoke test: task create → list → delete against kind cluster.
+  # Smoke test: task create → list → delete against a fresh kind cluster.
+  # Self-contained — kind clusters don't persist across GitHub Actions runner VMs.
+  # Uses the same image SHA built by build-image to guarantee consistency.
   e2e-uat:
     runs-on: ubuntu-latest
     needs: [deploy]
     steps:
       - uses: actions/checkout@v4
 
-      - name: Restore kind cluster context
+      - name: Create kind cluster for e2e
         uses: helm/kind-action@v1
         with:
-          cluster_name: ci-${{ github.run_id }}
-          install_only: true
+          cluster_name: ci-e2e-${{ github.run_id }}
+          wait: 120s
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull task-service image and load into kind
+        run: |
+          IMAGE="ghcr.io/proops2026-taskmanager/task-service:sha-${{ github.sha }}"
+          docker pull "${IMAGE}"
+          kind load docker-image "${IMAGE}" --name ci-e2e-${{ github.run_id }}
+
+      - name: Update task-service image tag in manifest
+        run: |
+          IMAGE="ghcr.io/proops2026-taskmanager/task-service:sha-${{ github.sha }}"
+          sed -i "s|image:.*taskmanager-task-service.*|image: ${IMAGE}|" \
+            ci/k8s/task-svc-deployment.yaml
+
+      - name: Create task-svc-cm ConfigMap
+        run: |
+          kubectl create configmap task-svc-cm \
+            --from-literal=PORT=3002 \
+            --namespace=default
+
+      - name: Create task-svc-secret Secret
+        run: |
+          kubectl create secret generic task-svc-secret \
+            --from-literal=DATABASE_URL="postgresql://taskuser:taskpassword@postgres-svc:5432/taskmanager" \
+            --namespace=default
+
+      - name: Deploy postgres
+        run: |
+          kubectl apply -f - <<'EOF'
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: postgres-cm
+            namespace: default
+          data:
+            POSTGRES_USER: taskuser
+            POSTGRES_PASSWORD: taskpassword
+            POSTGRES_DB: taskmanager
+          ---
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: postgres-svc
+            namespace: default
+          spec:
+            selector:
+              app: postgres
+            ports:
+              - port: 5432
+                targetPort: 5432
+          ---
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: postgres
+            namespace: default
+          spec:
+            replicas: 1
+            selector:
+              matchLabels:
+                app: postgres
+            template:
+              metadata:
+                labels:
+                  app: postgres
+              spec:
+                containers:
+                  - name: postgres
+                    image: postgres:15
+                    envFrom:
+                      - configMapRef:
+                          name: postgres-cm
+                    ports:
+                      - containerPort: 5432
+          EOF
+
+      - name: Wait for postgres rollout
+        run: kubectl rollout status deployment/postgres --timeout=120s
+
+      - name: Apply task-service manifests
+        run: kubectl apply -f ci/k8s/
+
+      - name: Wait for task-service rollout
+        run: kubectl rollout status deployment/task-service --timeout=180s
 
       - name: Port-forward task-service
         run: |
