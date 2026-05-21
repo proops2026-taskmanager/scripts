@@ -32,7 +32,8 @@ BODY=$(curl -sf -X POST "${BASE_URL}/tasks" \
     \"due_date\": \"2026-12-31T00:00:00.000Z\"
   }")
 
-TASK_ID=$(printf '%s' "$BODY" | grep -o '"id":[0-9]*' | head -1 | grep -o '[0-9]*')
+# Tasks use UUID primary keys — extract "id":"<uuid>" from JSON response
+TASK_ID=$(printf '%s' "$BODY" | grep -o '"id":"[^"]*"' | head -1 | sed 's/"id":"//;s/"//')
 if [ -n "$TASK_ID" ]; then
   pass "POST /tasks → id=${TASK_ID}"
 else
@@ -41,16 +42,17 @@ fi
 
 # ── 3. List tasks — verify created task is present ───────────────────────────
 LIST=$(curl -sf "${BASE_URL}/tasks" -H "X-User-Id: ${USER_ID}")
-if printf '%s' "$LIST" | grep -q "\"id\":${TASK_ID}"; then
+if printf '%s' "$LIST" | grep -q "\"id\":\"${TASK_ID}\""; then
   pass "GET /tasks → task ${TASK_ID} present"
 else
   fail "GET /tasks — task ${TASK_ID} not found in list"
 fi
 
-# ── 4. Delete task ────────────────────────────────────────────────────────────
+# ── 4. Delete task — requires X-User-Role: lead (route enforces RBAC) ────────
 DEL_STATUS=$(curl -sf -o /dev/null -w "%{http_code}" -X DELETE \
   "${BASE_URL}/tasks/${TASK_ID}" \
-  -H "X-User-Id: ${USER_ID}")
+  -H "X-User-Id: ${USER_ID}" \
+  -H "X-User-Role: lead")
 if [ "$DEL_STATUS" = "204" ]; then
   pass "DELETE /tasks/${TASK_ID} → 204"
 else
@@ -59,7 +61,7 @@ fi
 
 # ── 5. Verify gone ────────────────────────────────────────────────────────────
 AFTER=$(curl -sf "${BASE_URL}/tasks" -H "X-User-Id: ${USER_ID}")
-if printf '%s' "$AFTER" | grep -q "\"id\":${TASK_ID}"; then
+if printf '%s' "$AFTER" | grep -q "\"id\":\"${TASK_ID}\""; then
   fail "GET /tasks — task ${TASK_ID} still present after delete"
 else
   pass "GET /tasks → task ${TASK_ID} gone after delete"
