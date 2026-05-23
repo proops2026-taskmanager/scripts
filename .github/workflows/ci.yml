@@ -82,20 +82,48 @@ jobs:
       - name: Test task-service
         env:
           DATABASE_URL: postgresql://testuser:testpass@localhost:5434/tasks_test_db
-        run: cd task-service && npm ci && npm test
+        run: cd task-service && npm ci && npm test -- --coverage
+
+      - name: Upload task-service coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-task-service
+          path: task-service/coverage/lcov.info
+          retention-days: 1
 
       - name: Test user-service
         env:
           DATABASE_URL: postgresql://testuser:testpass@localhost:5433/users_test_db
           JWT_SECRET: test_secret_minimum_32_characters_long
           JWT_EXPIRES_IN: 24h
-        run: cd user-service && npm ci && npm test
+        run: cd user-service && npm ci && npm test -- --coverage
+
+      - name: Upload user-service coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-user-service
+          path: user-service/coverage/lcov.info
+          retention-days: 1
 
       - name: Test api-gateway
-        run: cd api-gateway && npm ci && npm test
+        run: cd api-gateway && npm ci && npm test -- --coverage
+
+      - name: Upload api-gateway coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-api-gateway
+          path: api-gateway/coverage/lcov.info
+          retention-days: 1
 
       - name: Test frontend-service
-        run: cd frontend-service && npm ci && npm test
+        run: cd frontend-service && npm ci && npm run test -- --coverage
+
+      - name: Upload frontend-service coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-frontend-service
+          path: frontend-service/coverage/lcov.info
+          retention-days: 1
 
   # ── Job 3: build-image ────────────────────────────────────────────────────────
   # Builds ALL 4 service images. Matrix runs 4 jobs in parallel.
@@ -264,6 +292,49 @@ jobs:
         # IRD-32 §3: this output is the mentor verification artifact
         run: |
           kubectl describe pod -l app=task-service | grep -E "Image:|Status:"
+
+  # ── Job 5: sonar ─────────────────────────────────────────────────────────────
+  # Runs parallel to build-image (both need [lint, test]).
+  # Downloads all 4 coverage artifacts produced by the test job, then runs the
+  # SonarCloud scan. fetch-depth: 0 is required — shallow clone breaks blame
+  # data and PR decoration (IRD-34 §4).
+  sonar:
+    runs-on: ubuntu-latest
+    needs: [test]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download task-service coverage
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-task-service
+          path: task-service/coverage
+
+      - name: Download user-service coverage
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-user-service
+          path: user-service/coverage
+
+      - name: Download api-gateway coverage
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-api-gateway
+          path: api-gateway/coverage
+
+      - name: Download frontend-service coverage
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-frontend-service
+          path: frontend-service/coverage
+
+      - name: SonarCloud scan
+        uses: SonarSource/sonarcloud-github-action@v4
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
   # e2e-uat removed from CI.
   # Smoke tests against a real deployed environment belong in the CD pipeline,
