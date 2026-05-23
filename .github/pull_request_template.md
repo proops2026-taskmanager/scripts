@@ -1,11 +1,12 @@
 ## What
-<!-- What does this PR change? -->
+[1-2 sentences describing the change]
 
 ## Why
-<!-- Why is this change needed? Link to issue or DOP AC if applicable. -->
+[1-2 sentences on the reason / problem solved]
 
 ## How to test
-<!-- Steps a reviewer can follow to verify the change works. -->
+[exact command(s) to verify]
 
 ## Risk
-<!-- What could break? Any rollback considerations? -->
+[low / medium / high — and what could break]
+
