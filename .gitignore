@@ -38,3 +38,5 @@ memory/*
 !memory/git-workflows.md
 # Exception: github-actions.md is the CI/CD reference doc (AC-08 — IRD-31)
 !memory/github-actions.md
+# Exception: sonarcloud.md is the quality gate reference doc (AC-09 — IRD-34)
+!memory/sonarcloud.md
