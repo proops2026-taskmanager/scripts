@@ -154,11 +154,13 @@ sonar:
 
 | # | File | Line | Rule | Dimension | Fix Date |
 |---|------|------|------|-----------|----------|
-| 1 | `src/bad-code.ts` | 6 | S1764 — Identical expressions on both sides of operator | BUG | Week 6 (deliberately introduced for drill; delete file) |
-| 2 | *(fill after first scan)* | | | | |
-| 3 | *(fill after first scan)* | | | | |
+| 1 | `src/bad-code.ts` | 11 | S2068 — Hard-coded passwords are security-sensitive | VULNERABILITY | Week 6 (drill file — delete after AC-08 complete) |
+| 2 | `src/bad-code.ts` | 16 | S1764 — Identical expressions on both sides of operator | BUG | Week 6 (drill file — delete after AC-08 complete) |
+| 3 | *(fill after first clean-branch scan)* | | | | |
 
-**Note:** After the bad-PR drill is complete (`src/bad-code.ts` deleted), items 2 and 3 will be real findings from the service code scan. Update this table from the SonarCloud dashboard → Issues tab after first clean-branch run.
+**Bad-PR drill uses two triggers:** S2068 (Vulnerability, line 11) ensures the "0 new vulnerabilities" gate fails regardless of how the TS analyzer classifies S1764. S1764 (Bug, line 16) is the secondary trigger. Having both covers analyzer version differences.
+
+**Note:** After the bad-PR drill is complete (`src/bad-code.ts` deleted), item 3 will come from real service code findings. Update from SonarCloud dashboard → Issues tab after the first clean-branch run.
 
 ---
 
