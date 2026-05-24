@@ -348,12 +348,21 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          EXTRA_ARGS=""
+          if [ -n "${{ github.event.pull_request.number }}" ]; then
+            EXTRA_ARGS="-Dsonar.pullrequest.key=${{ github.event.pull_request.number }} \
+              -Dsonar.pullrequest.branch=${{ github.head_ref }} \
+              -Dsonar.pullrequest.base=${{ github.base_ref }}"
+          else
+            EXTRA_ARGS="-Dsonar.branch.name=${GITHUB_REF_NAME}"
+          fi
           docker run --rm \
             -e SONAR_HOST_URL=https://sonarcloud.io \
             -e SONAR_TOKEN="${SONAR_TOKEN}" \
             -e GITHUB_TOKEN="${GITHUB_TOKEN}" \
             -v "$(pwd):/usr/src" \
-            sonarsource/sonar-scanner-cli
+            sonarsource/sonar-scanner-cli \
+            sonar-scanner ${EXTRA_ARGS}
 
   # e2e-uat removed from CI.
   # Smoke tests against a real deployed environment belong in the CD pipeline,
