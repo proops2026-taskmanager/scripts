@@ -1,17 +1,25 @@
 // SonarCloud bad-PR drill — AC-08
-// Two patterns to guarantee at least one gate condition fails:
+// Three patterns across syntax and type levels for maximum reliability:
 //
-// 1. S2068 (VULNERABILITY): Hard-coded passwords are security-sensitive
-//    → fails "0 vulnerabilities on new code" condition
+// typescript:S3923 — All branches in a conditional have the same implementation (BUG)
+//   Purely syntactic — fires without TypeScript type info
 //
-// 2. S1764 (BUG or Code Smell depending on TS analyzer version): identical operands
-//    → kept as secondary trigger
+// typescript:S1764 — Identical expressions on both sides of operator (BUG)
+//
+// typescript:S2259 — Null dereference (BUG, needs strict tsconfig)
 
-export function getDbUrl(): string {
-  const password = 'p@ssw0rd_hardcoded_123'; // S2068 — never hard-code credentials
-  return `postgresql://admin:${password}@localhost:5432/taskmanager`;
+export function getStatus(isActive: boolean): string {
+  if (isActive) {
+    return 'active'; // S3923: both branches identical — dead logic
+  } else {
+    return 'active';
+  }
 }
 
 export function validateRole(role: string): boolean {
-  return role === role; // S1764 — always returns true, identical operands
+  return role === role; // S1764: always returns true
+}
+
+export function getUserName(user: { name: string } | null): string {
+  return user.name; // S2259: user can be null — null dereference
 }
