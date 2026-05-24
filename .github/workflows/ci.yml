@@ -301,6 +301,7 @@ jobs:
   # SonarCloud scan. fetch-depth: 0 is required — shallow clone breaks blame
   # data and PR decoration (IRD-34 §4).
   sonar:
+    name: SonarCloud Code Analysis
     runs-on: ubuntu-latest
     needs: [test]
     steps:
