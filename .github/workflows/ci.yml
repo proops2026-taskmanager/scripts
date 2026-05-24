@@ -362,7 +362,34 @@ jobs:
             -e GITHUB_TOKEN="${GITHUB_TOKEN}" \
             -v "$(pwd):/usr/src" \
             sonarsource/sonar-scanner-cli \
-            sonar-scanner -Dsonar.qualitygate.wait=true ${EXTRA_ARGS}
+            sonar-scanner ${EXTRA_ARGS}
+
+      - name: Check Quality Gate
+        # sonar.qualitygate.wait=true queries /project_status?branch= but PR analyses
+        # are stored under ?pullRequest=N — "Project not found" every time.
+        # Poll the correct endpoint ourselves instead.
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          if [ -n "${{ github.event.pull_request.number }}" ]; then
+            QUERY="pullRequest=${{ github.event.pull_request.number }}"
+          else
+            QUERY="branch=${GITHUB_REF_NAME}"
+          fi
+          echo "Polling Quality Gate: projectKey=proops2026-taskmanager_scripts&${QUERY}"
+          for i in $(seq 1 10); do
+            STATUS=$(curl -sf -u "${SONAR_TOKEN}:" \
+              "https://sonarcloud.io/api/qualitygates/project_status?projectKey=proops2026-taskmanager_scripts&${QUERY}" \
+              | python3 -c "import sys,json; print(json.load(sys.stdin)['projectStatus']['status'])" 2>/dev/null || echo "NONE")
+            echo "Attempt ${i}/10: status=${STATUS}"
+            if [ "${STATUS}" = "OK" ]; then
+              echo "Quality Gate PASSED"; exit 0
+            elif [ "${STATUS}" = "ERROR" ]; then
+              echo "Quality Gate FAILED — new issues blocked merge"; exit 1
+            fi
+            sleep 10
+          done
+          echo "Timed out waiting for Quality Gate result"; exit 1
 
   # e2e-uat removed from CI.
   # Smoke tests against a real deployed environment belong in the CD pipeline,
