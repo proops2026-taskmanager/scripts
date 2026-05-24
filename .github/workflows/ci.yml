@@ -362,7 +362,7 @@ jobs:
             -e GITHUB_TOKEN="${GITHUB_TOKEN}" \
             -v "$(pwd):/usr/src" \
             sonarsource/sonar-scanner-cli \
-            sonar-scanner ${EXTRA_ARGS}
+            sonar-scanner -Dsonar.qualitygate.wait=true ${EXTRA_ARGS}
 
   # e2e-uat removed from CI.
   # Smoke tests against a real deployed environment belong in the CD pipeline,
