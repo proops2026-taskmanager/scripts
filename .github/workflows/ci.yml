@@ -308,6 +308,16 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Clone service repos
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BASE="https://x-access-token:${GH_TOKEN}@github.com/proops2026-taskmanager"
+          git clone --depth 1 "${BASE}/task-service.git"   task-service
+          git clone --depth 1 "${BASE}/user-service.git"   user-service
+          git clone --depth 1 "${BASE}/api-gateway.git"    api-gateway
+          git clone --depth 1 "${BASE}/frontend-service.git" frontend-service
+
       - name: Download task-service coverage
         uses: actions/download-artifact@v4
         with:
@@ -332,18 +342,17 @@ jobs:
           name: coverage-frontend-service
           path: frontend-service/coverage
 
-      - name: Install sonar-scanner CLI
-        run: |
-          curl -sSLo sonar-scanner.zip \
-            https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-5.0.1.3006-linux-x64.zip
-          unzip -q sonar-scanner.zip
-          echo "$(pwd)/sonar-scanner-5.0.1.3006-linux-x64/bin" >> "$GITHUB_PATH"
-
       - name: SonarCloud scan
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        run: sonar-scanner
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          docker run --rm \
+            -e SONAR_HOST_URL=https://sonarcloud.io \
+            -e SONAR_TOKEN="${SONAR_TOKEN}" \
+            -e GITHUB_TOKEN="${GITHUB_TOKEN}" \
+            -v "$(pwd):/usr/src" \
+            sonarsource/sonar-scanner-cli
 
   # e2e-uat removed from CI.
   # Smoke tests against a real deployed environment belong in the CD pipeline,
