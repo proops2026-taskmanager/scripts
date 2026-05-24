@@ -41,14 +41,14 @@
     # delegation: localhost means this shell command runs locally, not on the bastion.
     - name: Read users_db_host from terraform output
       ansible.builtin.command: >
-        terraform -chdir=../terraform/environments/dev output -raw users_db_host
+        terraform -chdir={{ playbook_dir }}/../../terraform/environments/dev output -raw users_db_host
       delegate_to: localhost
       changed_when: false
       register: tf_users_host
 
     - name: Read tasks_db_host from terraform output
       ansible.builtin.command: >
-        terraform -chdir=../terraform/environments/dev output -raw tasks_db_host
+        terraform -chdir={{ playbook_dir }}/../../terraform/environments/dev output -raw tasks_db_host
       delegate_to: localhost
       changed_when: false
       register: tf_tasks_host

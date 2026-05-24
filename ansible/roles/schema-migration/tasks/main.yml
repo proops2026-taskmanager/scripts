@@ -28,13 +28,14 @@
 
 - name: Copy users migration SQL to bastion
   ansible.builtin.copy:
-    src: "{{ playbook_dir }}/../user-service/migrations/001_create_users.sql"
+    # playbook_dir = ansible/playbooks/ — go up two levels to reach repo root
+    src: "{{ playbook_dir }}/../../user-service/db/migrations/001_create_users.sql"
     dest: /tmp/migrations/001_create_users.sql
     mode: "0600"
 
 - name: Copy tasks migration SQL to bastion
   ansible.builtin.copy:
-    src: "{{ playbook_dir }}/../task-service/migrations/001_create_tables.sql"
+    src: "{{ playbook_dir }}/../../task-service/db/migrations/001_create_tables.sql"
     dest: /tmp/migrations/001_create_tables.sql
     mode: "0600"
 
