@@ -82,20 +82,48 @@ jobs:
       - name: Test task-service
         env:
           DATABASE_URL: postgresql://testuser:testpass@localhost:5434/tasks_test_db
-        run: cd task-service && npm ci && npm test
+        run: cd task-service && npm ci && npm test -- --coverage
+
+      - name: Upload task-service coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-task-service
+          path: task-service/coverage/lcov.info
+          retention-days: 1
 
       - name: Test user-service
         env:
           DATABASE_URL: postgresql://testuser:testpass@localhost:5433/users_test_db
           JWT_SECRET: test_secret_minimum_32_characters_long
           JWT_EXPIRES_IN: 24h
-        run: cd user-service && npm ci && npm test
+        run: cd user-service && npm ci && npm test -- --coverage
+
+      - name: Upload user-service coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-user-service
+          path: user-service/coverage/lcov.info
+          retention-days: 1
 
       - name: Test api-gateway
-        run: cd api-gateway && npm ci && npm test
+        run: cd api-gateway && npm ci && npm test -- --coverage
+
+      - name: Upload api-gateway coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-api-gateway
+          path: api-gateway/coverage/lcov.info
+          retention-days: 1
 
       - name: Test frontend-service
-        run: cd frontend-service && npm ci && npm test
+        run: cd frontend-service && npm ci && npm run test -- --coverage
+
+      - name: Upload frontend-service coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-frontend-service
+          path: frontend-service/coverage/lcov.info
+          retention-days: 1
 
   # ── Job 3: build-image ────────────────────────────────────────────────────────
   # Builds ALL 4 service images. Matrix runs 4 jobs in parallel.
@@ -124,6 +152,8 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+        with:
+          cache-binary: false
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -142,7 +172,7 @@ jobs:
             type=raw,value=latest
 
       - name: Build and push ${{ matrix.service }}
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: ./${{ matrix.service }}
           push: true
@@ -160,11 +190,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Create kind cluster
-        uses: helm/kind-action@v1
-        with:
-          cluster_name: ci-${{ github.run_id }}
-          wait: 120s
+      - name: Install kind and create cluster
+        run: |
+          curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.23.0/kind-linux-amd64
+          chmod +x ./kind && sudo mv ./kind /usr/local/bin/kind
+          kind create cluster --name ci-${{ github.run_id }} --wait 120s
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -264,6 +294,66 @@ jobs:
         # IRD-32 §3: this output is the mentor verification artifact
         run: |
           kubectl describe pod -l app=task-service | grep -E "Image:|Status:"
+
+  # ── Job 5: sonar ─────────────────────────────────────────────────────────────
+  # Runs parallel to build-image (both need [lint, test]).
+  # Downloads all 4 coverage artifacts produced by the test job, then runs the
+  # SonarCloud scan. fetch-depth: 0 is required — shallow clone breaks blame
+  # data and PR decoration (IRD-34 §4).
+  sonar:
+    name: SonarCloud Code Analysis
+    runs-on: ubuntu-latest
+    needs: [test]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Clone service repos
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BASE="https://x-access-token:${GH_TOKEN}@github.com/proops2026-taskmanager"
+          git clone --depth 1 "${BASE}/task-service.git"   task-service
+          git clone --depth 1 "${BASE}/user-service.git"   user-service
+          git clone --depth 1 "${BASE}/api-gateway.git"    api-gateway
+          git clone --depth 1 "${BASE}/frontend-service.git" frontend-service
+
+      - name: Download task-service coverage
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-task-service
+          path: task-service/coverage
+
+      - name: Download user-service coverage
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-user-service
+          path: user-service/coverage
+
+      - name: Download api-gateway coverage
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-api-gateway
+          path: api-gateway/coverage
+
+      - name: Download frontend-service coverage
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-frontend-service
+          path: frontend-service/coverage
+
+      - name: SonarCloud scan
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          docker run --rm \
+            -e SONAR_HOST_URL=https://sonarcloud.io \
+            -e SONAR_TOKEN="${SONAR_TOKEN}" \
+            -e GITHUB_TOKEN="${GITHUB_TOKEN}" \
+            -v "$(pwd):/usr/src" \
+            sonarsource/sonar-scanner-cli
 
   # e2e-uat removed from CI.
   # Smoke tests against a real deployed environment belong in the CD pipeline,
