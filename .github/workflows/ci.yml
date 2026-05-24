@@ -408,7 +408,6 @@ jobs:
           for i in $(seq 1 10); do
             RESPONSE=$(curl -sf -u "${SONAR_TOKEN}:" \
               "https://sonarcloud.io/api/qualitygates/project_status?projectKey=proops2026-taskmanager_scripts&${QUERY}" 2>/dev/null || echo "{}")
-            echo "Raw response: ${RESPONSE}"
             STATUS=$(echo "${RESPONSE}" | python3 -c \
               "import sys,json; print(json.load(sys.stdin).get('projectStatus',{}).get('status','NONE'))" 2>/dev/null || echo "NONE")
             echo "Attempt ${i}/10: status=${STATUS}"
