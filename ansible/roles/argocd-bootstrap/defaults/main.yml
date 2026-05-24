@@ -1,0 +1,4 @@
+# ansible/roles/argocd-bootstrap/defaults/main.yml
+argocd_namespace:     "argocd"
+argocd_chart_version: "6.7.3"
+argocd_version:       "2.11.3"

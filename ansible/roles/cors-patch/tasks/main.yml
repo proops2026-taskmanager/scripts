@@ -1,0 +1,69 @@
+---
+# ansible/roles/cors-patch/tasks/main.yml
+#
+# Waits for the NLB (Network Load Balancer) hostname to be assigned to the
+# ingress, then patches the CORS_ORIGIN key in the api-gateway ConfigMap
+# and restarts the api-gateway Deployment so the new value takes effect.
+#
+# WHY THIS STEP EXISTS:
+#   The NLB hostname is not known at Terraform apply time — AWS assigns it
+#   asynchronously after ingress-nginx creates the LoadBalancer Service.
+#   CORS_ORIGIN must equal the exact NLB hostname the browser uses to reach
+#   the API; a mismatch causes every frontend request to be rejected with 403.
+#
+# WHY ANSIBLE (not a shell script):
+#   eks/post-apply.sh was a manually-run one-shot script easily forgotten after
+#   every cluster recreate. As an Ansible role inside post-deploy.yml it runs
+#   automatically as part of the deploy pipeline and is tracked in git history.
+
+- name: Wait for NLB hostname on ingress {{ ingress_name }}
+  ansible.builtin.shell: |
+    kubectl get ingress {{ ingress_name }} \
+      --namespace {{ k8s_namespace }} \
+      -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
+  register: nlb_hostname_result
+  until: nlb_hostname_result.stdout | length > 0
+  retries: "{{ cors_poll_retries }}"
+  delay: "{{ cors_poll_delay }}"
+  changed_when: false
+
+- name: Set nlb_hostname fact
+  ansible.builtin.set_fact:
+    nlb_hostname: "{{ nlb_hostname_result.stdout }}"
+
+- name: Print NLB hostname
+  ansible.builtin.debug:
+    msg: "NLB hostname: {{ nlb_hostname }}"
+
+- name: Patch api-gateway ConfigMap — set CORS_ORIGIN to http://{{ nlb_hostname }}
+  ansible.builtin.command: >
+    kubectl patch configmap {{ api_gateway_cm }}
+    --namespace {{ k8s_namespace }}
+    --patch '{"data":{"CORS_ORIGIN":"http://{{ nlb_hostname }}"}}'
+  register: patch_result
+  changed_when: '"patched" in patch_result.stdout'
+
+- name: Restart api-gateway Deployment to pick up new CORS_ORIGIN
+  ansible.builtin.command: >
+    kubectl rollout restart deployment/{{ api_gateway_deploy }}
+    --namespace {{ k8s_namespace }}
+  changed_when: true
+
+- name: Wait for api-gateway rollout to complete
+  ansible.builtin.command: >
+    kubectl rollout status deployment/{{ api_gateway_deploy }}
+    --namespace {{ k8s_namespace }}
+    --timeout=90s
+  changed_when: false
+
+- name: Confirm CORS_ORIGIN in ConfigMap
+  ansible.builtin.command: >
+    kubectl get configmap {{ api_gateway_cm }}
+    --namespace {{ k8s_namespace }}
+    -o jsonpath='{.data.CORS_ORIGIN}'
+  register: cors_confirm
+  changed_when: false
+
+- name: Print confirmed CORS_ORIGIN
+  ansible.builtin.debug:
+    msg: "CORS_ORIGIN is now: {{ cors_confirm.stdout }}"

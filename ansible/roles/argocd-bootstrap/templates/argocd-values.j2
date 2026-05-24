@@ -1,0 +1,30 @@
+# ansible/roles/argocd-bootstrap/templates/argocd-values.j2
+# Minimal ArgoCD Helm values for dev environment.
+# HA mode disabled (single replica per component) — saves ~4 pods.
+
+global:
+  domain: ""
+
+server:
+  # insecure: true serves HTTP on port 80 inside the cluster.
+  # The ArgoCD UI is accessed via kubectl port-forward — no external TLS needed in dev.
+  insecure: true
+  replicas: 1
+
+repoServer:
+  replicas: 1
+
+applicationSet:
+  replicas: 1
+
+redis:
+  enabled: true
+
+# Disable notifications (reduces noise in dev).
+notifications:
+  enabled: false
+
+configs:
+  params:
+    # Do not attempt to reconcile resources that ArgoCD is managing itself.
+    server.disable.auth: "false"

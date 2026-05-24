@@ -1,0 +1,61 @@
+---
+# ansible/playbooks/bootstrap-argocd.yml
+#
+# Phase 4 of the deployment pipeline — one-time operation.
+#
+# WHAT THIS DOES:
+#   Installs ArgoCD into the cluster via Helm (run from the bastion).
+#   After this playbook, ArgoCD is running and waiting for App-of-Apps registration.
+#
+# WHEN TO RUN:
+#   Once per cluster, after configure-bastion.yml has succeeded.
+#   Re-running is safe: `helm upgrade --install` and `kubectl create namespace`
+#   are both idempotent.
+#
+# HOW TO RUN:
+#   BASTION=$(terraform -chdir=../terraform/environments/dev output -raw bastion_public_ip)
+#   ansible-playbook -i inventories/dev/hosts.yml playbooks/bootstrap-argocd.yml \
+#     -e bastion_ip=$BASTION
+#
+# COMPLETION CRITERION:
+#   `kubectl get pods -n argocd` shows all pods Running/Ready.
+#   Initial admin password is printed (change it after first login).
+
+- name: Bootstrap ArgoCD
+  hosts: bastion
+  become: false
+  gather_facts: false
+
+  pre_tasks:
+    - name: Verify kubectl reaches cluster
+      ansible.builtin.command: kubectl get nodes --no-headers
+      changed_when: false
+      register: nodes_check
+      failed_when: nodes_check.rc != 0
+
+    - name: Copy ArgoCD Helm values to bastion
+      ansible.builtin.template:
+        src: "../roles/argocd-bootstrap/templates/argocd-values.j2"
+        dest: /tmp/argocd-values.yaml
+        mode: "0600"
+
+  roles:
+    - role: argocd-bootstrap
+
+  post_tasks:
+    - name: List ArgoCD pods
+      ansible.builtin.command: kubectl get pods -n {{ argocd_namespace }} --no-headers
+      changed_when: false
+      register: argocd_pods
+
+    - name: Show ArgoCD pods
+      ansible.builtin.debug:
+        msg: "{{ argocd_pods.stdout_lines }}"
+
+    - name: Print next step
+      ansible.builtin.debug:
+        msg:
+          - "ArgoCD is running. Next step — register App-of-Apps:"
+          - "  kubectl apply -f gitops/bootstrap/namespace.yaml"
+          - "  kubectl apply -f gitops/bootstrap/app-of-apps.yaml"
+          - "Access UI: kubectl port-forward svc/argocd-server -n {{ argocd_namespace }} 8080:443"

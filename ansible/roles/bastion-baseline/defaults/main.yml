@@ -1,0 +1,7 @@
+# ansible/roles/bastion-baseline/defaults/main.yml
+# Version pins for all tools installed by this role.
+# Override per environment in group_vars or --extra-vars.
+kubectl_version: "1.30.0"
+helm_version:    "3.14.4"
+argocd_version:  "2.11.3"
+k9s_version:     "0.32.4"

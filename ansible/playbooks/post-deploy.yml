@@ -1,0 +1,100 @@
+---
+# ansible/playbooks/post-deploy.yml
+#
+# Phase 5 of the deployment pipeline.
+# Automates the manual steps in `terraform output next_steps` (steps 3–5).
+#
+# WHAT THIS DOES (in order):
+#   1. Reads RDS hostnames from `terraform output` on the OPERATOR machine
+#      (the machine running Ansible, not the bastion)
+#   2. SSHs to the bastion and applies K8s Secrets with the RDS DATABASE_URLs
+#   3. Runs psql schema migrations from the bastion against RDS
+#   4. Waits for the NLB hostname to be assigned by ingress-nginx
+#   5. Patches CORS_ORIGIN ConfigMap and restarts api-gateway
+#
+# WHEN TO RUN:
+#   After configure-bastion.yml and after the Kustomize layers have been applied
+#   (either via `kubectl apply -f gitops/bootstrap/` triggering ArgoCD, or
+#   directly via `kubectl apply -k eks/01-infra/ eks/02-data/ eks/03-app/`).
+#
+# HOW TO RUN:
+#   export TF_VAR_users_db_password="<password>"
+#   export TF_VAR_tasks_db_password="<password>"
+#   export JWT_SECRET="<secret>"
+#   BASTION=$(terraform -chdir=../terraform/environments/dev output -raw bastion_public_ip)
+#   ansible-playbook -i inventories/dev/hosts.yml playbooks/post-deploy.yml \
+#     -e bastion_ip=$BASTION \
+#     -e users_db_password=$TF_VAR_users_db_password \
+#     -e tasks_db_password=$TF_VAR_tasks_db_password \
+#     -e jwt_secret=$JWT_SECRET
+#
+# COMPLETION CRITERION:
+#   Final task prints confirmed CORS_ORIGIN; kubectl get secret shows both secrets.
+
+- name: Post-deploy — K8s secrets + migrations + CORS patch
+  hosts: bastion
+  become: false
+  gather_facts: false
+
+  pre_tasks:
+    # Read RDS hostnames from terraform output on the CONTROL NODE (operator machine).
+    # delegation: localhost means this shell command runs locally, not on the bastion.
+    - name: Read users_db_host from terraform output
+      ansible.builtin.command: >
+        terraform -chdir=../terraform/environments/dev output -raw users_db_host
+      delegate_to: localhost
+      changed_when: false
+      register: tf_users_host
+
+    - name: Read tasks_db_host from terraform output
+      ansible.builtin.command: >
+        terraform -chdir=../terraform/environments/dev output -raw tasks_db_host
+      delegate_to: localhost
+      changed_when: false
+      register: tf_tasks_host
+
+    - name: Set db host facts
+      ansible.builtin.set_fact:
+        users_db_host: "{{ tf_users_host.stdout }}"
+        tasks_db_host: "{{ tf_tasks_host.stdout }}"
+
+    - name: Verify kubectl reaches cluster from bastion
+      ansible.builtin.command: kubectl get nodes --no-headers
+      changed_when: false
+
+  roles:
+    - role: k8s-secrets
+      vars:
+        users_db_host:     "{{ users_db_host }}"
+        tasks_db_host:     "{{ tasks_db_host }}"
+        users_db_password: "{{ users_db_password }}"
+        tasks_db_password: "{{ tasks_db_password }}"
+        jwt_secret:        "{{ jwt_secret }}"
+
+    - role: schema-migration
+      vars:
+        users_db_host:     "{{ users_db_host }}"
+        tasks_db_host:     "{{ tasks_db_host }}"
+        users_db_password: "{{ users_db_password }}"
+        tasks_db_password: "{{ tasks_db_password }}"
+
+    - role: cors-patch
+
+  post_tasks:
+    - name: Final check — list K8s secrets
+      ansible.builtin.command: kubectl get secret -n {{ k8s_namespace }} --no-headers
+      changed_when: false
+      register: secrets_final
+
+    - name: Show secrets
+      ansible.builtin.debug:
+        msg: "{{ secrets_final.stdout_lines }}"
+
+    - name: Pipeline complete
+      ansible.builtin.debug:
+        msg:
+          - "post-deploy.yml complete."
+          - "K8s Secrets: user-svc-secret, task-svc-secret ✓"
+          - "Schema migrations: users_db, tasks_db ✓"
+          - "CORS_ORIGIN patched ✓"
+          - "Next: verify smoke tests pass — bash e2e-tests/smoke/task-api.sh"

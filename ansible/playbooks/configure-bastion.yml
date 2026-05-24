@@ -1,0 +1,62 @@
+---
+# ansible/playbooks/configure-bastion.yml
+#
+# Phase 3 of the deployment pipeline (see GITOPS-ARCHITECTURE.md §11).
+#
+# WHAT THIS DOES:
+#   Installs all operator tooling on the bastion and configures kubectl access
+#   to the EKS cluster via the bastion's IAM instance profile.
+#
+# WHEN TO RUN:
+#   After `terraform apply` completes — run once per new cluster.
+#   Re-running is safe: all tasks are idempotent.
+#
+# HOW TO RUN:
+#   BASTION=$(terraform -chdir=../terraform/environments/dev output -raw bastion_public_ip)
+#   ansible-playbook -i inventories/dev/hosts.yml playbooks/configure-bastion.yml \
+#     -e bastion_ip=$BASTION
+#
+# COMPLETION CRITERION:
+#   Final task prints node list — kubectl can reach the cluster from the bastion.
+
+- name: Configure bastion host
+  hosts: bastion
+  become: false
+  gather_facts: true
+
+  pre_tasks:
+    - name: Wait for SSH to be available (new EC2 instances need ~30s after launch)
+      ansible.builtin.wait_for_connection:
+        delay: 10
+        timeout: 120
+
+    - name: Verify bastion IAM instance profile can reach AWS
+      ansible.builtin.command: aws sts get-caller-identity --region {{ aws_region }}
+      changed_when: false
+      register: caller_identity
+
+    - name: Print IAM identity (confirms instance profile is attached)
+      ansible.builtin.debug:
+        msg: "Running as: {{ (caller_identity.stdout | from_json).Arn }}"
+
+  roles:
+    - role: bastion-baseline
+      vars:
+        kubectl_version: "{{ kubectl_version }}"
+        helm_version:    "{{ helm_version }}"
+        argocd_version:  "{{ argocd_version }}"
+        k9s_version:     "{{ k9s_version }}"
+
+  post_tasks:
+    - name: Print tool versions for confirmation
+      ansible.builtin.shell: |
+        echo "kubectl: $(kubectl version --client --short 2>/dev/null || kubectl version --client)"
+        echo "helm:    $(helm version --short)"
+        echo "argocd:  $(argocd version --client --short 2>/dev/null | head -1)"
+        echo "aws:     $(aws --version)"
+      changed_when: false
+      register: versions_output
+
+    - name: Show installed versions
+      ansible.builtin.debug:
+        msg: "{{ versions_output.stdout_lines }}"

@@ -1,0 +1,6 @@
+# ansible/roles/schema-migration/defaults/main.yml
+users_db_password: ""
+tasks_db_password: ""
+db_username:       "app_user"
+users_db_name:     "users_db"
+tasks_db_name:     "tasks_db"

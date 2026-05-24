@@ -1,0 +1,65 @@
+---
+# ansible/roles/argocd-bootstrap/tasks/main.yml
+#
+# One-time ArgoCD install via Helm on the bastion.
+# Idempotent: helm upgrade --install is safe to re-run.
+# After this role, ArgoCD is running in the cluster and the argocd CLI is
+# configured with the initial admin password from the argocd-initial-admin-secret.
+
+- name: Add ArgoCD Helm repository
+  ansible.builtin.command: helm repo add argo https://argoproj.github.io/argo-helm
+  changed_when: false
+
+- name: Update Helm repositories
+  ansible.builtin.command: helm repo update
+  changed_when: false
+
+- name: Create argocd namespace
+  ansible.builtin.command: kubectl create namespace {{ argocd_namespace }}
+  register: ns_create
+  changed_when: ns_create.rc == 0
+  failed_when:
+    - ns_create.rc != 0
+    - '"already exists" not in ns_create.stderr'
+
+- name: Install or upgrade ArgoCD {{ argocd_chart_version }}
+  ansible.builtin.command: >
+    helm upgrade --install argocd argo/argo-cd
+    --namespace {{ argocd_namespace }}
+    --version {{ argocd_chart_version }}
+    --values /tmp/argocd-values.yaml
+    --wait --timeout 300s
+  register: argocd_install
+
+- name: Print ArgoCD install output
+  ansible.builtin.debug:
+    msg: "{{ argocd_install.stdout_lines }}"
+
+- name: Wait for argocd-server Deployment to be Available
+  ansible.builtin.command: >
+    kubectl rollout status deployment/argocd-server
+    --namespace {{ argocd_namespace }}
+    --timeout=180s
+  changed_when: false
+
+- name: Read initial admin password from Secret
+  ansible.builtin.command: >
+    kubectl get secret {{ argocd_admin_secret_name }}
+    --namespace {{ argocd_namespace }}
+    -o jsonpath='{.data.password}'
+  register: argocd_pw_b64
+  changed_when: false
+  no_log: true
+
+- name: Set argocd_initial_password fact
+  ansible.builtin.set_fact:
+    argocd_initial_password: "{{ argocd_pw_b64.stdout | b64decode }}"
+  no_log: true
+
+- name: Print ArgoCD access instructions
+  ansible.builtin.debug:
+    msg:
+      - "ArgoCD installed in namespace: {{ argocd_namespace }}"
+      - "Access UI: kubectl port-forward svc/argocd-server -n {{ argocd_namespace }} 8080:443"
+      - "Username: admin"
+      - "Password: (retrieved — change after first login)"

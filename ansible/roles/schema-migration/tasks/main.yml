@@ -1,0 +1,78 @@
+---
+# ansible/roles/schema-migration/tasks/main.yml
+#
+# Runs SQL migrations against RDS from the bastion.
+# The bastion SG has an inbound rule on RDS port 5432 — added by the bastion
+# Terraform module (aws_security_group_rule.bastion_to_rds).
+#
+# Migrations are idempotent: each SQL file uses CREATE TABLE IF NOT EXISTS
+# and CREATE TYPE IF NOT EXISTS so re-running does not fail.
+#
+# REQUIRED extra-vars: users_db_password, tasks_db_password, users_db_host, tasks_db_host
+# Source files are copied from the operator machine to the bastion before execution.
+
+- name: Assert migration inputs are set
+  ansible.builtin.assert:
+    that:
+      - users_db_password | length > 0
+      - tasks_db_password | length > 0
+      - users_db_host     | length > 0
+      - tasks_db_host     | length > 0
+    fail_msg: "users_db_password, tasks_db_password, users_db_host, and tasks_db_host must be set"
+
+- name: Create migration staging directory on bastion
+  ansible.builtin.file:
+    path: /tmp/migrations
+    state: directory
+    mode: "0700"
+
+- name: Copy users migration SQL to bastion
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../user-service/migrations/001_create_users.sql"
+    dest: /tmp/migrations/001_create_users.sql
+    mode: "0600"
+
+- name: Copy tasks migration SQL to bastion
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../task-service/migrations/001_create_tables.sql"
+    dest: /tmp/migrations/001_create_tables.sql
+    mode: "0600"
+
+- name: Run users_db migration
+  ansible.builtin.shell: |
+    PGPASSWORD="{{ users_db_password }}" psql \
+      -h "{{ users_db_host }}" \
+      -U "{{ db_username }}" \
+      -d "{{ users_db_name }}" \
+      --no-password \
+      -v ON_ERROR_STOP=1 \
+      -f /tmp/migrations/001_create_users.sql
+  changed_when: true
+  no_log: true
+  register: users_migration
+  failed_when: users_migration.rc != 0
+
+- name: Run tasks_db migration
+  ansible.builtin.shell: |
+    PGPASSWORD="{{ tasks_db_password }}" psql \
+      -h "{{ tasks_db_host }}" \
+      -U "{{ db_username }}" \
+      -d "{{ tasks_db_name }}" \
+      --no-password \
+      -v ON_ERROR_STOP=1 \
+      -f /tmp/migrations/001_create_tables.sql
+  changed_when: true
+  no_log: true
+  register: tasks_migration
+  failed_when: tasks_migration.rc != 0
+
+- name: Print migration output
+  ansible.builtin.debug:
+    msg:
+      - "users_db: {{ users_migration.stdout_lines }}"
+      - "tasks_db: {{ tasks_migration.stdout_lines }}"
+
+- name: Clean up migration files from bastion
+  ansible.builtin.file:
+    path: /tmp/migrations
+    state: absent

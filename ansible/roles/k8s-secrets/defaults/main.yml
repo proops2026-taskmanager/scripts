@@ -1,0 +1,7 @@
+# ansible/roles/k8s-secrets/defaults/main.yml
+# Passwords MUST be passed at run time via --extra-vars or read from Secrets Manager.
+# NEVER commit real values here.
+users_db_password: ""
+tasks_db_password: ""
+jwt_secret:        ""
+k8s_namespace:     "default"

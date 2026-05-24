@@ -1,0 +1,32 @@
+# ansible/inventories/dev/group_vars/all.yml
+#
+# Variables available to every play and role in the dev environment.
+# These are non-sensitive. Passwords are passed at run time via --extra-vars
+# or read from AWS Secrets Manager inside the k8s-secrets role.
+
+# ── AWS / EKS ─────────────────────────────────────────────────────────────────
+aws_region:   "eu-central-1"
+cluster_name: "taskmanager-dev"
+
+# ── Tool versions pinned — change here, propagate everywhere ──────────────────
+kubectl_version: "1.30.0"
+helm_version:    "3.14.4"
+argocd_version:  "2.11.3"
+k9s_version:     "0.32.4"
+
+# ── Database (host values populated from terraform output at run time) ─────────
+# These are template defaults. The k8s-secrets role reads the real values
+# directly from `terraform output` on the operator machine before SSHing in.
+users_db_port: 5432
+tasks_db_port: 5432
+users_db_name: "users_db"
+tasks_db_name: "tasks_db"
+db_username:   "app_user"
+
+# ── Application ───────────────────────────────────────────────────────────────
+k8s_namespace: "default"
+argocd_namespace: "argocd"
+
+# ── ArgoCD ────────────────────────────────────────────────────────────────────
+argocd_chart_version: "6.7.3"
+argocd_admin_secret_name: "argocd-initial-admin-secret"

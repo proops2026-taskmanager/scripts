@@ -1,0 +1,49 @@
+---
+# ansible/roles/k8s-secrets/tasks/main.yml
+#
+# Constructs K8s Secrets from Terraform outputs + passwords passed at run time.
+# Uses `kubectl create secret --dry-run=client -o yaml | kubectl apply -f -`
+# so the task is idempotent: re-running updates the Secret in place rather than
+# failing with "secret already exists".
+#
+# REQUIRED extra-vars (passed at playbook run time):
+#   users_db_password, tasks_db_password, jwt_secret
+#   users_db_host, tasks_db_host  (read from terraform output by the playbook)
+
+- name: Assert required variables are set
+  ansible.builtin.assert:
+    that:
+      - users_db_password | length > 0
+      - tasks_db_password | length > 0
+      - jwt_secret        | length > 0
+      - users_db_host     | length > 0
+      - tasks_db_host     | length > 0
+    fail_msg: "users_db_password, tasks_db_password, jwt_secret, users_db_host, and tasks_db_host must all be non-empty"
+
+- name: Apply user-svc-secret (DATABASE_URL + JWT_SECRET)
+  ansible.builtin.shell: |
+    kubectl create secret generic user-svc-secret \
+      --namespace={{ k8s_namespace }} \
+      --from-literal=DATABASE_URL="postgresql://{{ db_username }}:{{ users_db_password }}@{{ users_db_host }}:{{ users_db_port }}/{{ users_db_name }}?sslmode=require" \
+      --from-literal=JWT_SECRET="{{ jwt_secret }}" \
+      --dry-run=client -o yaml | kubectl apply -f -
+  changed_when: true
+  no_log: true
+
+- name: Apply task-svc-secret (DATABASE_URL)
+  ansible.builtin.shell: |
+    kubectl create secret generic task-svc-secret \
+      --namespace={{ k8s_namespace }} \
+      --from-literal=DATABASE_URL="postgresql://{{ db_username }}:{{ tasks_db_password }}@{{ tasks_db_host }}:{{ tasks_db_port }}/{{ tasks_db_name }}?sslmode=require" \
+      --dry-run=client -o yaml | kubectl apply -f -
+  changed_when: true
+  no_log: true
+
+- name: Verify secrets exist
+  ansible.builtin.command: kubectl get secret user-svc-secret task-svc-secret -n {{ k8s_namespace }} --no-headers
+  changed_when: false
+  register: secrets_check
+
+- name: Print secret names (not values)
+  ansible.builtin.debug:
+    msg: "{{ secrets_check.stdout_lines }}"

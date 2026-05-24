@@ -1,0 +1,7 @@
+# ansible/roles/cors-patch/defaults/main.yml
+k8s_namespace:      "default"
+ingress_name:       "taskmanager-ingress-api"
+api_gateway_cm:     "api-gw-cm"
+api_gateway_deploy: "api-gateway"
+cors_poll_retries:  20
+cors_poll_delay:    15
