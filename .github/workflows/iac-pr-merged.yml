@@ -1,0 +1,19 @@
+name: IaC CI — merge
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'iac/**'
+
+jobs:
+  apply:
+    uses: chau11ece/proops2026-cicd-platform/.github/workflows/reusable-iac.yml@v1
+    with:
+      action: apply
+      environment: dev
+      working-directory: iac/terraform/dev
+    secrets:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}

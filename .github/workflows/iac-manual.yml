@@ -1,0 +1,27 @@
+name: IaC Manual
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Terraform action"
+        type: choice
+        options: [plan, apply, destroy]
+        required: true
+      environment:
+        description: "Target environment"
+        type: choice
+        options: [dev, test, prod]
+        default: dev
+
+jobs:
+  iac:
+    uses: chau11ece/proops2026-cicd-platform/.github/workflows/reusable-iac.yml@v1
+    with:
+      action: ${{ inputs.action }}
+      environment: ${{ inputs.environment }}
+      working-directory: iac/terraform/${{ inputs.environment }}
+    secrets:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
