@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - 'iac/**'
+      - 'terraform/**'
 
 jobs:
   plan:
@@ -12,7 +12,7 @@ jobs:
     with:
       action: plan
       environment: dev
-      working-directory: iac/terraform/dev
+      working-directory: terraform/environments/dev
     secrets:
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
