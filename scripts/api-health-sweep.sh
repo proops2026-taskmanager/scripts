@@ -53,3 +53,4 @@ done
 
 printf '\n--- %d passed  %d failed ---\n\n' "$PASS" "$FAIL"
 [[ $FAIL -eq 0 ]] || exit 1          # non-zero exit = CI pipeline fails the job
+# path-routing test — app change only
