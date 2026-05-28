@@ -59,3 +59,4 @@ spec:
               port: 3002
             initialDelaySeconds: 10
             periodSeconds: 5
+# path-routing test — ci/k8s change only
