@@ -1,0 +1,232 @@
+name: CD
+
+on:
+  workflow_run:
+    workflows: ["App CI — merge"]   # must match the `name:` field in pr-merged.yml exactly
+    types: [completed]
+    branches: [main]    # only trigger CD for main — not feature branches
+
+# Prevent two CD runs overlapping on main.
+# cancel-in-progress: false = queue, not cancel.
+# Cancelling a running deploy mid-rollout leaves the cluster in a split-brain
+# state (some pods on new image, some on old). Queuing is always safer.
+concurrency:
+  group: cd-staging
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  statuses: write    # notify job needs this to POST to /statuses API
+
+jobs:
+
+  # ── Guard: abort if CI did not succeed ───────────────────────────────────────
+  # workflow_run fires on BOTH success and failure. Without this guard,
+  # a red CI on main would trigger a deploy. The guard is the safety interlock.
+  guard:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: CI passed — proceeding
+        run: echo "Deploying SHA ${{ github.event.workflow_run.head_sha }}"
+
+  # ── Job 1: deploy-staging ─────────────────────────────────────────────────────
+  deploy-staging:
+    needs: [guard]
+    runs-on: ubuntu-latest
+    env:
+      AWS_REGION: us-east-1
+      CLUSTER_NAME: taskmanager-dev
+    steps:
+      - uses: actions/checkout@v4
+
+      # All secrets come from GitHub Secrets — never from committed files.
+      # Required secrets to create in repo Settings → Secrets and variables → Actions:
+      #   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY  — IAM user with eks:DescribeCluster + EKS node access
+      #   GHCR_PAT                                  — GitHub PAT with read:packages scope
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # This generates a kubeconfig on the runner — no KUBECONFIG file in the repo.
+      # Never commit a kubeconfig. It contains a bearer token with cluster-admin access.
+      - name: Configure kubectl for EKS
+        run: |
+          aws eks update-kubeconfig \
+            --name ${{ env.CLUSTER_NAME }} \
+            --region ${{ env.AWS_REGION }}
+
+      # Fix: imagePullPolicy was set to Never for minikube. EKS needs IfNotPresent.
+      # kubectl patch is idempotent — safe to run on every deploy.
+      - name: Fix imagePullPolicy for GHCR (idempotent)
+        run: |
+          for svc in task-service user-service api-gateway frontend-service; do
+            kubectl patch deployment/${svc} -n default \
+              --type=json \
+              -p='[{"op":"replace","path":"/spec/template/spec/containers/0/imagePullPolicy","value":"IfNotPresent"}]' \
+              2>/dev/null || echo "${svc} patch skipped"
+          done
+
+      # EKS nodes cannot pull from ghcr.io without credentials.
+      # --dry-run=client -o yaml | kubectl apply = create if absent, update if changed.
+      # This is the idempotent Secret upsert pattern — safe to run on every deploy.
+      - name: Create/refresh GHCR imagePullSecret
+        run: |
+          kubectl create secret docker-registry ghcr-pull-secret \
+            --docker-server=ghcr.io \
+            --docker-username=${{ github.actor }} \
+            --docker-password=${{ secrets.GHCR_PAT }} \
+            --namespace=default \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      # Ensure all 4 Deployments reference the imagePullSecret.
+      # imagePullSecrets lives at spec.template.spec — separate from containers.
+      - name: Attach imagePullSecret to Deployments
+        run: |
+          for svc in task-service user-service api-gateway frontend-service; do
+            kubectl patch deployment/${svc} -n default \
+              --type=json \
+              -p='[{"op":"add","path":"/spec/template/spec/imagePullSecrets","value":[{"name":"ghcr-pull-secret"}]}]' \
+              2>/dev/null || true
+          done
+
+      # Update CORS_ORIGIN to staging ELB — localhost:3000 blocks every browser request.
+      # STAGING_ELB_HOST is a repo variable (not a secret — the hostname is not sensitive).
+      # Set it in: repo Settings → Secrets and variables → Variables → STAGING_ELB_HOST
+      - name: Patch CORS_ORIGIN for staging
+        run: |
+          kubectl patch configmap api-gw-cm -n default \
+            --type=merge \
+            -p="{\"data\":{\"CORS_ORIGIN\":\"http://${{ vars.STAGING_ELB_HOST }}\"}}"
+          # Restart api-gateway so it picks up the new ConfigMap value
+          kubectl rollout restart deployment/api-gateway -n default
+
+      # SHA tag is the source of truth for traceability.
+      # :latest is supplemental only — never deploy :latest to staging.
+      # head_sha is the scripts-repo commit that built the images in CI.
+      - name: Update all service images to SHA tag
+        env:
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          TAG="sha-${SHA}"
+          PREFIX="ghcr.io/proops2026-taskmanager"
+          kubectl set image deployment/task-service \
+            task-service=${PREFIX}/task-service:${TAG} -n default
+          kubectl set image deployment/user-service \
+            user-service=${PREFIX}/user-service:${TAG} -n default
+          kubectl set image deployment/api-gateway \
+            api-gateway=${PREFIX}/api-gateway:${TAG} -n default
+          kubectl set image deployment/frontend-service \
+            frontend-service=${PREFIX}/frontend-service:${TAG} -n default
+
+      # All 4 rollouts must complete before E2E starts.
+      # A stall here (readiness probe failing) fails the job before E2E runs.
+      # Correct: don't test against a partially-deployed stack.
+      - name: Wait for all rollouts
+        run: |
+          kubectl rollout status deployment/task-service     --timeout=300s -n default
+          kubectl rollout status deployment/user-service     --timeout=300s -n default
+          kubectl rollout status deployment/api-gateway      --timeout=300s -n default
+          kubectl rollout status deployment/frontend-service --timeout=300s -n default
+
+      # Evidence artifact: confirms the correct SHA is running in every pod
+      - name: Verify SHA in running pods
+        run: |
+          kubectl get pods -n default \
+            -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.containers[0].image}{"\n"}{end}' \
+            | grep -E "task-service|user-service|api-gateway|frontend"
+
+  # ── Job 2: e2e-test ───────────────────────────────────────────────────────────
+  # Runs AFTER deploy-staging confirms all pods are Running + Ready.
+  # All traffic goes through api-gateway (port 8080) — never directly to services.
+  #
+  # Why no auto-rollback on failure?
+  # Automated rollback removes the human checkpoint that catches:
+  #   - Config drift (CORS, secrets, migrations applied once)
+  #   - Test bugs (the test might be wrong, not the deploy)
+  #   - Partial state (rolling back image does not roll back a DB migration)
+  # A failed e2e job posts a failure status and pages for human review.
+  e2e-test:
+    needs: [deploy-staging]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Each job gets a fresh runner — AWS config does not carry over
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Configure kubectl for EKS
+        run: aws eks update-kubeconfig --name taskmanager-dev --region us-east-1
+
+      # Resolve BASE_URL from ELB if not set as a repo variable.
+      # Priority: STAGING_BASE_URL repo var → derive from kubectl
+      - name: Resolve staging base URL
+        run: |
+          if [ -n "${{ vars.STAGING_BASE_URL }}" ]; then
+            echo "BASE_URL=${{ vars.STAGING_BASE_URL }}" >> "$GITHUB_ENV"
+          else
+            ELB=$(kubectl get svc -n ingress-nginx ingress-nginx-controller \
+              -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+            echo "BASE_URL=http://${ELB}" >> "$GITHUB_ENV"
+            echo "Resolved BASE_URL=http://${ELB}"
+          fi
+
+      # Rolling restarts from deploy-staging may still be propagating through the LB.
+      # Wait up to 2 minutes for the health endpoint to return 200.
+      - name: Wait for staging health check
+        run: |
+          for i in $(seq 1 12); do
+            STATUS=$(curl -sf -o /dev/null -w "%{http_code}" \
+              "${BASE_URL}/api/health" || echo "000")
+            [ "$STATUS" = "200" ] && echo "Staging reachable" && exit 0
+            echo "Attempt ${i}/12 → ${STATUS}. Waiting 10s..."
+            sleep 10
+          done
+          echo "Staging unreachable after 120s" >&2
+          exit 1
+
+      - name: Run full E2E suite
+        run: BASE_URL="${BASE_URL}" bash e2e-tests/smoke/full-api.sh
+
+  # ── Job 3: notify ─────────────────────────────────────────────────────────────
+  # Always runs (if: always()) — posts pass/fail commit status even on failure.
+  # The "cd/staging" context can be added to the GitHub Ruleset as a required
+  # check, blocking future main-branch merges if staging is broken.
+  notify:
+    needs: [deploy-staging, e2e-test]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Post CD status to commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHA:      ${{ github.event.workflow_run.head_sha }}
+        run: |
+          DEPLOY="${{ needs.deploy-staging.result }}"
+          E2E="${{ needs.e2e-test.result }}"
+
+          if [ "$DEPLOY" = "success" ] && [ "$E2E" = "success" ]; then
+            STATE="success"
+            DESC="Staging deploy + E2E passed"
+          elif [ "$DEPLOY" != "success" ]; then
+            STATE="failure"
+            DESC="Rollout failed — check pod events"
+          else
+            STATE="failure"
+            DESC="E2E tests failed — staging broken; needs human review"
+          fi
+
+          gh api --method POST \
+            "repos/${{ github.repository }}/statuses/${SHA}" \
+            -f state="${STATE}" \
+            -f description="${DESC}" \
+            -f context="cd/staging" \
+            -f target_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
