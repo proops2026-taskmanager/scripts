@@ -7,7 +7,7 @@ on:
 
 jobs:
   ci:
-    uses: chau11ece/proops2026-cicd-platform/.github/workflows/reusable-app-ci.yml@v1
+    uses: chau11ece/proops2026-cicd-platform/.github/workflows/reusable-app-ci.yml@ef02aa1049284061f4062269542a2b5822ea1bd9
     with:
       push: false
       image-name: ${{ github.repository }}
