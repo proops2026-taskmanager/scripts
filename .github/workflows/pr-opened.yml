@@ -15,5 +15,7 @@ jobs:
     with:
       push: false
       image-name: ${{ github.repository }}
+      working-directory: task-service
+      context: task-service
     secrets:
       GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
