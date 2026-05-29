@@ -6,13 +6,16 @@ on:
     paths:
       - 'ci/**'
 
+permissions:
+  contents: read
+
 jobs:
   apply:
     uses: chau11ece/proops2026-cicd-platform/.github/workflows/reusable-iac.yml@v1
     with:
       action: apply
       environment: dev
-      working-directory: terraform/environments/dev
+      working-directory: ci/terraform/environments/dev
     secrets:
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
