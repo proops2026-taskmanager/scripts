@@ -1,0 +1,21 @@
+name: Deploy Production (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      image-tag:
+        description: "Commit SHA to deploy (copy from build run summary)"
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    uses: chau11ece/proops2026-cicd-platform/.github/workflows/reusable-deploy.yml@v2
+    with:
+      image-tag: ${{ inputs.image-tag }}
+      environment: prod
+      project-name: "proops2026-taskmanager"
+      service-name: "scripts"
