@@ -21,6 +21,7 @@ jobs:
   deploy-dev:
     needs: build
     uses: chau11ece/proops2026-cicd-platform/.github/workflows/reusable-deploy.yml@v2
+    secrets: inherit
     with:
       image-tag: ${{ needs.build.outputs.image-tag }}
       environment: dev
