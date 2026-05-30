@@ -14,6 +14,7 @@ permissions:
 jobs:
   deploy:
     uses: chau11ece/proops2026-cicd-platform/.github/workflows/reusable-deploy.yml@v2
+    secrets: inherit
     with:
       image-tag: ${{ inputs.image-tag }}
       environment: staging
