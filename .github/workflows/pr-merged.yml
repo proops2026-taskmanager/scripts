@@ -21,7 +21,8 @@ jobs:
   deploy-dev:
     needs: build
     uses: chau11ece/proops2026-cicd-platform/.github/workflows/reusable-deploy.yml@v2
-    secrets: inherit
+    secrets:
+      KUBE_CONFIG_DATA: ${{ secrets.KUBE_CONFIG_DATA }}
     with:
       image-tag: ${{ needs.build.outputs.image-tag }}
       environment: dev
