@@ -1,0 +1,244 @@
+# Unified Docker Compose - Task Management System
+# 
+# Usage:
+#   Local development:      docker compose up --build -d
+#   Single server (prod):    docker compose -f docker-compose.yml -e TAG=v1.0.0 up -d
+#   Docker Swarm:          docker stack deploy -c docker-compose.yml taskmanager
+#
+# Environment variables:
+#   TAG=v1.0.0              - Image tag (default: latest built locally)
+#   REGISTRY=chaudevops      - Docker Hub namespace
+#   VITE_API_BASE_URL       - API URL for frontend
+
+x-deploy-default: &deploy-default
+  replicas: 1
+  restart_policy:
+    condition: on-failure
+    delay: 5s
+    max_attempts: 3
+
+x-deploystateless: &deploy-stateless
+  replicas: 2
+  placement:
+    constraints:
+      - node.role == worker
+  update_config:
+    parallelism: 1
+    delay: 10s
+    failure_action: rollback
+    order: start-first
+  restart_policy:
+    condition: on-failure
+    delay: 10s
+    max_attempts: 5
+
+x-deploy-db: &deploy-db
+  replicas: 1
+  placement:
+    constraints:
+      - node.role == manager
+  restart_policy:
+    condition: on-failure
+    delay: 5s
+    max_attempts: 3
+
+services:
+
+  frontend-service:
+    build:
+      context: ./frontend-service
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8080}
+    image: ${REGISTRY:-local}/taskmanager-frontend-service:${TAG:-latest}
+    ports:
+      - "3000:3000"
+    depends_on:
+      api-gateway:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - app-net
+    deploy:
+      <<: *deploy-stateless
+
+  api-gateway:
+    build: ./api-gateway
+    image: ${REGISTRY:-local}/taskmanager-api-gateway:${TAG:-latest}
+    ports:
+      - "8080:8080"
+    env_file: ./api-gateway/.env
+    depends_on:
+      user-service:
+        condition: service_healthy
+      task-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - app-net
+    deploy:
+      <<: *deploy-stateless
+
+  user-service:
+    build: ./user-service
+    image: ${REGISTRY:-local}/taskmanager-user-service:${TAG:-latest}
+    ports:
+      - "3001:3001"
+    env_file: ./user-service/.env
+    depends_on:
+      db-user:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3001/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - app-net
+    deploy:
+      <<: *deploy-stateless
+
+  task-service:
+    build: ./task-service
+    image: ${REGISTRY:-local}/taskmanager-task-service:${TAG:-latest}
+    ports:
+      - "3002:3002"
+    env_file: ./task-service/.env
+    depends_on:
+      db-task:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3002/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - app-net
+    deploy:
+      <<: *deploy-stateless
+
+  db-user:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: users_db
+      POSTGRES_USER: app_user
+      POSTGRES_PASSWORD: app_pass
+    volumes:
+      - db-user-data:/var/lib/postgresql/data
+      - ./user-service/db/migrations/001_create_users.sql:/docker-entrypoint-initdb.d/001_create_users.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app_user -d users_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    networks:
+      - app-net
+    deploy:
+      <<: *deploy-db
+
+  db-task:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: tasks_db
+      POSTGRES_USER: app_user
+      POSTGRES_PASSWORD: app_pass
+    volumes:
+      - db-task-data:/var/lib/postgresql/data
+      - ./task-service/db/migrations/001_create_tables.sql:/docker-entrypoint-initdb.d/001_create_tables.sql:ro
+      - ./task-service/db/migrations/002_add_priority.sql:/docker-entrypoint-initdb.d/002_add_priority.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app_user -d tasks_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    networks:
+      - app-net
+    deploy:
+      <<: *deploy-db
+
+  db-notifications:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: notifications_db
+      POSTGRES_USER: app_user
+      POSTGRES_PASSWORD: app_pass
+    ports:
+      - "5435:5432"
+    volumes:
+      - db-notifications-data:/var/lib/postgresql/data
+      - ./notification-service/db/migrations/001_create_notifications.sql:/docker-entrypoint-initdb.d/001_create_notifications.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app_user -d notifications_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    networks:
+      - app-net
+    deploy:
+      <<: *deploy-db
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    networks:
+      - app-net
+    deploy:
+      <<: *deploy-db
+
+  notification-service:
+    build: ./notification-service
+    image: ${REGISTRY:-local}/taskmanager-notification-service:${TAG:-latest}
+    ports:
+      - "3003:3003"
+    environment:
+      DATABASE_URL: postgresql://app_user:app_pass@db-notifications:5432/notifications_db
+      REDIS_URL: redis://redis:6379
+      DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:-}
+    depends_on:
+      db-notifications:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3003/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - app-net
+    deploy:
+      <<: *deploy-stateless
+
+volumes:
+  db-user-data:
+  db-task-data:
+  db-notifications-data:
+  redis-data:
+
+networks:
+  app-net:
+    driver: bridge
+    attachable: true
