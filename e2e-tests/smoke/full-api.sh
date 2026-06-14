@@ -41,7 +41,7 @@ TOKEN=$(printf '%s' "$LOGIN_BODY" | grep -o '"token":"[^"]*"' | sed 's/"token":"
 TASK_BODY=$(curl -sf -X POST "${BASE_URL}/api/tasks" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer ${TOKEN}" \
-  -d "{\"title\":\"Smoke ${TS}\",\"description\":\"CI smoke test\",\"due_date\":\"2026-12-31T00:00:00.000Z\"}")
+  -d "{\"title\":\"Smoke ${TS}\",\"description\":\"CI smoke test\",\"due_date\":\"2026-12-31T00:00:00.000Z\",\"assignee_id\":\"${REG_ID}\"}")
 TASK_ID=$(printf '%s' "$TASK_BODY" | grep -o '"id":"[^"]*"' | head -1 | sed 's/"id":"//;s/"//')
 [ -n "$TASK_ID" ] && pass "POST /api/tasks → id=${TASK_ID}" || fail "POST /api/tasks → no id: ${TASK_BODY}"
 
