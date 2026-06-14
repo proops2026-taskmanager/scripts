@@ -1,148 +1,20 @@
-name: App CD — DEV
+name: Full-stack smoke — DEV
 
-# Trigger: developer merges feature/* into develop.
-# Pipeline: test + build image → create GHCR pull secret → deploy DEV cluster → smoke test.
-# No manual approval — DEV is the sandbox; fast iteration is the goal.
+# Manual trigger: run after any service deploys to DEV to verify the full stack.
+# Tests the complete user flow through api-gateway ELB:
+#   register → login → create task → list tasks
 #
-# Why the build job is inlined (not reusable-build.yml):
-#   notification-service tests need PostgreSQL + Redis. GitHub Actions service containers
-#   can only be declared on a direct job, not inside a reusable workflow caller.
+# Each service repo (notification-service, user-service, etc.) owns its own
+# build → deploy pipeline. This workflow is the cross-service integration check.
 #
 # Required GitHub repo settings:
-#   Variables:  DEV_BASE_URL = http://<elb-hostname>
-#   Secrets:    KUBE_CONFIG_DATA = kubeconfig for EKS cluster
-#               GHCR_PAT        = GitHub PAT with read:packages scope (for imagePullSecret)
+#   Variables: DEV_BASE_URL = http://<api-gateway-elb-hostname>
 
 on:
-  push:
-    branches: [develop]
-    paths-ignore:
-      - 'ci/**'    # IaC changes are handled by iac-cd.yml, not this file
-      - '*.md'
-
-# Queue, never cancel a running deploy — cancelling mid-rollout leaves pods split-brained.
-concurrency:
-  group: cd-dev
-  cancel-in-progress: false
-
-permissions:
-  contents: read
-  packages: write
+  workflow_dispatch:
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    outputs:
-      image-tag: ${{ steps.set-tag.outputs.tag }}
-
-    services:
-      postgres:
-        image: postgres:15-alpine
-        env:
-          POSTGRES_USER: app_user
-          POSTGRES_PASSWORD: app_pass
-          POSTGRES_DB: notifications_db
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 5432:5432
-      redis:
-        image: redis:7-alpine
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 6379:6379
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: notification-service/package-lock.json
-
-      - name: Install dependencies
-        working-directory: notification-service
-        run: npm ci
-
-      - name: Run tests
-        working-directory: notification-service
-        run: npm test -- --coverage
-
-      - id: set-tag
-        run: echo "tag=${{ github.sha }}" >> $GITHUB_OUTPUT
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v6
-        with:
-          context: notification-service
-          push: true
-          tags: ghcr.io/proops2026-taskmanager/notification-service:${{ steps.set-tag.outputs.tag }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-  # Create (or refresh) the GHCR imagePullSecret on the cluster before deploy.
-  # Without this, EKS nodes cannot pull from ghcr.io and pods stay in ImagePullBackOff.
-  setup-registry:
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Set up kubectl
-        uses: azure/setup-kubectl@v4
-
-      - name: Configure kubeconfig
-        run: |
-          mkdir -p ~/.kube
-          printf '%s' "${{ secrets.KUBE_CONFIG_DATA }}" | base64 -d > ~/.kube/config
-          chmod 600 ~/.kube/config
-
-      - name: Create/update GHCR imagePullSecret
-        run: |
-          kubectl create secret docker-registry ghcr-pull-secret \
-            --docker-server=ghcr.io \
-            --docker-username=${{ github.repository_owner }} \
-            --docker-password=${{ secrets.GHCR_PAT }} \
-            -n default \
-            --save-config \
-            --dry-run=client -o yaml | kubectl apply -f -
-
-      - name: Patch notification-service to reference pull secret
-        run: |
-          kubectl patch deployment notification-service -n default \
-            -p '{"spec":{"template":{"spec":{"imagePullSecrets":[{"name":"ghcr-pull-secret"}]}}}}'
-
-  deploy:
-    needs: [build, setup-registry]
-    uses: chau11ece/proops2026-cicd-platform/.github/workflows/reusable-deploy.yml@v2
-    secrets:
-      KUBE_CONFIG_DATA: ${{ secrets.KUBE_CONFIG_DATA }}
-    with:
-      image-tag: ${{ needs.build.outputs.image-tag }}
-      environment: default
-      project-name: "proops2026-taskmanager"
-      service-name: "notification-service"
-
-  # Smoke test runs through api-gateway ELB — verifies full stack is healthy post-deploy.
-  # Failure here does NOT roll back; it pages DevOps for human review.
   smoke:
-    needs: deploy
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -159,7 +31,7 @@ jobs:
             [ "$i" = "12" ] && echo "DEV unreachable after 120s" && exit 1
           done
 
-      - name: Run DEV smoke test
+      - name: Run full-stack smoke test
         env:
           BASE_URL: ${{ vars.DEV_BASE_URL }}
         run: bash e2e-tests/smoke/full-api.sh
