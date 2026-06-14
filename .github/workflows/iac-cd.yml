@@ -1,4 +1,8 @@
-name: IaC CI — merge
+name: IaC CD
+
+# Runs only when Terraform files under ci/** are merged to main.
+# Purpose: terraform apply — provisions or updates DEV infrastructure.
+# Staging and PROD infrastructure changes go through iac-manual.yml (manual review required).
 
 on:
   push:
@@ -17,6 +21,6 @@ jobs:
       environment: dev
       working-directory: ci/terraform/environments/dev
     secrets:
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_ACCESS_KEY_ID:     ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+      AWS_SESSION_TOKEN:     ${{ secrets.AWS_SESSION_TOKEN }}

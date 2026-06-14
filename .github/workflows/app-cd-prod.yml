@@ -1,0 +1,85 @@
+name: App CD — PROD
+
+# Trigger: DevOps merges release into main after STAGING smoke passes and QA approves.
+# Pipeline: build images → push to ECR → human approval gate → deploy PROD cluster → smoke test.
+#
+# Human approval gate: configure in GitHub Settings → Environments → production → Required reviewers.
+# The 'gate' job blocks until a reviewer approves in the GitHub Actions UI.
+# If no reviewer approves within the timeout (default: 30 days), the job expires and deploy is skipped.
+#
+# Required GitHub repo settings:
+#   Variables:  PROD_BASE_URL = http://<prod-elb-hostname>
+#   Secrets:    KUBE_CONFIG_DATA_PROD = kubeconfig for taskmanager-prod EKS cluster
+#   Environment: "production" with Required reviewers configured
+#
+# Phase 3: PROD cluster must exist (terraform apply environments/prod/) before this runs.
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'ci/**'
+      - '*.md'
+
+concurrency:
+  group: cd-prod
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  # Build runs immediately on push — reviewer can see what image is waiting for their approval.
+  build:
+    uses: chau11ece/proops2026-cicd-platform/.github/workflows/reusable-build.yml@v2
+    secrets: inherit
+    with:
+      project-name: "proops2026-taskmanager"
+      service-name: "scripts"
+
+  # Gate blocks here. Reviewer clicks "Approve" in GitHub Actions → deploy starts.
+  # This job does nothing except hold — the environment protection rule is what matters.
+  gate:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Confirm deployment to PROD
+        run: |
+          echo "Image approved for PROD: ${{ needs.build.outputs.image-tag }}"
+          echo "Deploying to taskmanager-prod EKS cluster"
+
+  deploy:
+    needs: [gate, build]
+    uses: chau11ece/proops2026-cicd-platform/.github/workflows/reusable-deploy.yml@v2
+    secrets:
+      KUBE_CONFIG_DATA: ${{ secrets.KUBE_CONFIG_DATA_PROD }}
+    with:
+      image-tag: ${{ needs.build.outputs.image-tag }}
+      environment: prod
+      project-name: "proops2026-taskmanager"
+      service-name: "scripts"
+
+  smoke:
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Wait for ELB health
+        env:
+          BASE_URL: ${{ vars.PROD_BASE_URL }}
+        run: |
+          for i in $(seq 1 12); do
+            STATUS=$(curl -sf -o /dev/null -w "%{http_code}" "${BASE_URL}/health" || echo "000")
+            [ "$STATUS" = "200" ] && echo "PROD reachable" && break
+            echo "Attempt ${i}/12 → ${STATUS}. Waiting 10s..."
+            sleep 10
+            [ "$i" = "12" ] && echo "PROD unreachable after 120s" && exit 1
+          done
+
+      - name: Run PROD smoke test
+        env:
+          BASE_URL: ${{ vars.PROD_BASE_URL }}
+        run: bash e2e-tests/smoke/full-api.sh

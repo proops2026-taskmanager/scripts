@@ -1,0 +1,68 @@
+name: App CD — STAGING
+
+# Trigger: DevOps merges develop into release after DEV smoke passes.
+# Pipeline: build images → push to ECR → deploy STAGING cluster → smoke test.
+# No manual approval — STAGING is automated; PROD requires human gate.
+#
+# Required GitHub repo settings:
+#   Variables:  STAGING_BASE_URL = http://<staging-elb-hostname>
+#   Secrets:    KUBE_CONFIG_DATA_STAGING = kubeconfig for taskmanager-staging EKS cluster
+#
+# Phase 2: STAGING cluster must exist (terraform apply environments/staging/) before this runs.
+
+on:
+  push:
+    branches: [release]
+    paths-ignore:
+      - 'ci/**'
+      - '*.md'
+
+concurrency:
+  group: cd-staging
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    uses: chau11ece/proops2026-cicd-platform/.github/workflows/reusable-build.yml@v2
+    secrets: inherit
+    with:
+      project-name: "proops2026-taskmanager"
+      service-name: "scripts"
+
+  deploy:
+    needs: build
+    uses: chau11ece/proops2026-cicd-platform/.github/workflows/reusable-deploy.yml@v2
+    secrets:
+      KUBE_CONFIG_DATA: ${{ secrets.KUBE_CONFIG_DATA_STAGING }}
+    with:
+      image-tag: ${{ needs.build.outputs.image-tag }}
+      environment: staging
+      project-name: "proops2026-taskmanager"
+      service-name: "scripts"
+
+  smoke:
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Wait for ELB health
+        env:
+          BASE_URL: ${{ vars.STAGING_BASE_URL }}
+        run: |
+          for i in $(seq 1 12); do
+            STATUS=$(curl -sf -o /dev/null -w "%{http_code}" "${BASE_URL}/health" || echo "000")
+            [ "$STATUS" = "200" ] && echo "STAGING reachable" && break
+            echo "Attempt ${i}/12 → ${STATUS}. Waiting 10s..."
+            sleep 10
+            [ "$i" = "12" ] && echo "STAGING unreachable after 120s" && exit 1
+          done
+
+      - name: Run STAGING smoke test
+        env:
+          BASE_URL: ${{ vars.STAGING_BASE_URL }}
+        run: bash e2e-tests/smoke/full-api.sh

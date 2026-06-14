@@ -1,9 +1,14 @@
 name: App CI — PR
 
+# Runs on every pull request regardless of target branch.
+# Purpose: fast feedback before merge — run tests, no image push, no deploy.
+# Blocked by: nothing. This job gates the merge button.
+
 on:
   pull_request:
     paths-ignore:
       - 'ci/**'
+      - '*.md'
 
 permissions:
   contents: read
