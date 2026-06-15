@@ -1,5 +1,13 @@
 name: IaC Manual
 
+# Manual Terraform plan / apply / destroy for any environment.
+# Use this for staging and prod (always plan first, then apply in a separate run).
+#
+# Required org secrets:
+#   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+#   GHCR_PAT  (classic PAT with repo + write:packages scopes — used for cross-repo checkout)
+#   TF_VAR_users_db_password, TF_VAR_tasks_db_password, TF_VAR_notifications_db_password
+
 on:
   workflow_dispatch:
     inputs:
@@ -11,7 +19,7 @@ on:
       environment:
         description: "Target environment"
         type: choice
-        options: [dev, test, prod]
+        options: [dev, staging, prod]
         default: dev
 
 permissions:
@@ -19,12 +27,25 @@ permissions:
 
 jobs:
   iac:
-    uses: chau11ece/proops2026-cicd-platform/.github/workflows/reusable-iac.yml@v1
-    with:
-      action: ${{ inputs.action }}
-      environment: ${{ inputs.environment }}
-      working-directory: ci/terraform/environments/${{ inputs.environment }}
-    secrets:
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Terraform repo
+        uses: actions/checkout@v4
+        with:
+          repository: proops2026-taskmanager/terraform
+          token: ${{ secrets.GHCR_PAT }}
+
+      - name: Run Terraform ${{ inputs.action }}
+        uses: chau11ece/proops2026-cicd-platform/.github/actions/tf-action@v1
+        with:
+          action: ${{ inputs.action }}
+          working-directory: environments/${{ inputs.environment }}
+          aws-region: eu-central-1
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+        env:
+          TF_VAR_users_db_password:         ${{ secrets.TF_VAR_USERS_DB_PASSWORD }}
+          TF_VAR_tasks_db_password:         ${{ secrets.TF_VAR_TASKS_DB_PASSWORD }}
+          TF_VAR_notifications_db_password: ${{ secrets.TF_VAR_NOTIFICATIONS_DB_PASSWORD }}
