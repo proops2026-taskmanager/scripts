@@ -1,0 +1,38 @@
+{
+  "receiver": "ai-agent-webhook",
+  "status": "firing",
+  "alerts": [
+    {
+      "status": "firing",
+      "labels": {
+        "alertname": "High5xxErrorRate",
+        "severity": "critical",
+        "namespace": "taskmanager-dev",
+        "service": "api-gateway",
+        "failure_mode": "high-error-rate"
+      },
+      "annotations": {
+        "summary": "High 5xx Error Rate on api-gateway",
+        "description": "5xx error rate has exceeded 5% for more than 2 minutes. Current value: 18%.",
+        "runbook_url": "https://github.com/chau11ece/proops2026-taskmanager/blob/main/runbooks/high-error-rate.md"
+      },
+      "startsAt": "2026-06-17T10:00:00Z",
+      "endsAt": "0001-01-01T00:00:00Z",
+      "generatorURL": "https://chautv.grafana.net/alerting/grafana/high-5xx-error-rate/view",
+      "fingerprint": "abc123def456"
+    }
+  ],
+  "groupLabels": {
+    "alertname": "High5xxErrorRate"
+  },
+  "commonLabels": {
+    "severity": "critical",
+    "namespace": "taskmanager-dev"
+  },
+  "commonAnnotations": {
+    "summary": "High 5xx Error Rate on api-gateway"
+  },
+  "externalURL": "https://chautv.grafana.net",
+  "version": "1",
+  "groupKey": "{}:{alertname=\"High5xxErrorRate\"}"
+}
