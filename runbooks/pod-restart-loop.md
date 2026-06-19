@@ -2,7 +2,7 @@
 
 **Alert name:** Pod Restart Loop
 **Severity:** warning
-**Service:** any service in namespace dev
+**Service:** any service in namespace taskmanager-dev
 **Namespace:** dev
 **Grafana panel:** Restart count (kube_pod_container_status_restarts_total)
 
@@ -33,25 +33,25 @@ One or more pods have restarted more than 3 times in the last 15 minutes. Kubern
 
 ```bash
 # 1. Find which pods are restarting
-kubectl get pods -n dev
+kubectl get pods -n taskmanager-dev
 # Look for: high RESTARTS count, status CrashLoopBackOff or ImagePullBackOff
 
 # 2. Describe the crashing pod — Events section is key
-kubectl describe pod <pod-name> -n dev
+kubectl describe pod <pod-name> -n taskmanager-dev
 # Look for: image pull errors, OOMKilled, liveness probe failures, resource limits
 
 # 3. Check current logs (if container is briefly running)
-kubectl logs <pod-name> -n dev --tail=100
+kubectl logs <pod-name> -n taskmanager-dev --tail=100
 
 # 4. Check PREVIOUS container logs (before the last crash)
-kubectl logs <pod-name> -n dev --previous --tail=100
+kubectl logs <pod-name> -n taskmanager-dev --previous --tail=100
 # This is the most useful — shows what the app printed before dying
 
 # 5. Check rollout history — did a recent deploy start this?
-kubectl rollout history deployment/<service-name> -n dev
+kubectl rollout history deployment/<service-name> -n taskmanager-dev
 
 # 6. Check resource usage vs limits
-kubectl describe pod <pod-name> -n dev | grep -A5 "Limits\|Requests\|Last State"
+kubectl describe pod <pod-name> -n taskmanager-dev | grep -A5 "Limits\|Requests\|Last State"
 
 # 7. Correlate with recent git commits
 git log --oneline --since="20 minutes ago"
@@ -65,27 +65,27 @@ git log --oneline --since="20 minutes ago"
 
 **If cause = bad image tag (ImagePullBackOff from recent deploy):**
 ```bash
-kubectl rollout undo deployment/<service-name> -n dev
+kubectl rollout undo deployment/<service-name> -n taskmanager-dev
 # This reverts to the previous known-good image tag
-kubectl rollout status deployment/<service-name> -n dev
+kubectl rollout status deployment/<service-name> -n taskmanager-dev
 ```
 
 **If cause = OOMKilled (pod keeps being killed by memory limit):**
 ```bash
 # Restart first — sometimes a memory spike is transient
-kubectl rollout restart deployment/<service-name> -n dev
+kubectl rollout restart deployment/<service-name> -n taskmanager-dev
 # Note: if OOMKill recurs after restart, it's a RISKY fix (needs limit increase)
 ```
 
 **If cause = single bad pod, others of same deployment healthy:**
 ```bash
-kubectl delete pod <pod-name> -n dev
+kubectl delete pod <pod-name> -n taskmanager-dev
 # K8s schedules a fresh pod from the healthy replica set
 ```
 
 **If cause = liveness probe failing after recent deploy:**
 ```bash
-kubectl rollout undo deployment/<service-name> -n dev
+kubectl rollout undo deployment/<service-name> -n taskmanager-dev
 ```
 
 ### Class 2 — RISKY (propose PR, do not execute)
@@ -104,9 +104,9 @@ kubectl rollout undo deployment/<service-name> -n dev
 **If cause = bad env var in ConfigMap/Secret:**
 ```bash
 # DO NOT RUN — propose as PR
-kubectl edit configmap <svc>-cm -n dev
+kubectl edit configmap <svc>-cm -n taskmanager-dev
 # OR
-kubectl edit secret <svc>-secret -n dev
+kubectl edit secret <svc>-secret -n taskmanager-dev
 ```
 
 **If cause = liveness probe timeout too tight:**
@@ -124,11 +124,11 @@ kubectl edit secret <svc>-secret -n dev
 After taking action, wait 60 seconds then:
 ```bash
 # Restart count should stop climbing
-kubectl get pods -n dev
+kubectl get pods -n taskmanager-dev
 # RESTARTS column should stabilize (not increment further)
 
 # Pod status should reach Running
-kubectl get pods -n dev | grep <service-name>
+kubectl get pods -n taskmanager-dev | grep <service-name>
 ```
 
 **Success:** Pod status = Running, restart count stable for 2+ minutes.

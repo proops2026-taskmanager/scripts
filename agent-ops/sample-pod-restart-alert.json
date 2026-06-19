@@ -1,0 +1,38 @@
+{
+  "receiver": "ai-agent-webhook",
+  "status": "firing",
+  "alerts": [
+    {
+      "status": "firing",
+      "labels": {
+        "alertname": "PodRestartLoop",
+        "severity": "warning",
+        "namespace": "taskmanager-dev",
+        "service": "task-service",
+        "failure_mode": "pod-restart-loop"
+      },
+      "annotations": {
+        "summary": "Pod restart loop detected: task-service",
+        "description": "task-service has restarted 5 times in the last 15 minutes. Current status: ImagePullBackOff.",
+        "runbook_url": "https://github.com/chau11ece/proops2026-taskmanager/blob/develop/runbooks/pod-restart-loop.md"
+      },
+      "startsAt": "2026-06-19T10:00:00Z",
+      "endsAt": "0001-01-01T00:00:00Z",
+      "generatorURL": "https://chautv.grafana.net/alerting/grafana/pod-restart-loop/view",
+      "fingerprint": "xyz789pod012"
+    }
+  ],
+  "groupLabels": {
+    "alertname": "PodRestartLoop"
+  },
+  "commonLabels": {
+    "severity": "warning",
+    "namespace": "taskmanager-dev"
+  },
+  "commonAnnotations": {
+    "summary": "Pod restart loop detected: task-service"
+  },
+  "externalURL": "https://chautv.grafana.net",
+  "version": "1",
+  "groupKey": "{}:{alertname=\"PodRestartLoop\"}"
+}
