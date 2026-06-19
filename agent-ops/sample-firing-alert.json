@@ -14,7 +14,7 @@
       "annotations": {
         "summary": "High 5xx Error Rate on api-gateway",
         "description": "5xx error rate has exceeded 5% for more than 2 minutes. Current value: 18%.",
-        "runbook_url": "https://github.com/chau11ece/proops2026-taskmanager/blob/main/runbooks/high-error-rate.md"
+        "runbook_url": "https://github.com/chau11ece/proops2026-taskmanager/blob/develop/runbooks/high-error-rate.md"
       },
       "startsAt": "2026-06-17T10:00:00Z",
       "endsAt": "0001-01-01T00:00:00Z",

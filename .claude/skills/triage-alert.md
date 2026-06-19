@@ -60,7 +60,7 @@ Write one sentence: "Most likely cause: [cause] because [evidence from diagnosti
 - `kubectl edit configmap` or `kubectl edit secret`
 - `kubectl scale deployment --replicas=0` (scale DOWN to zero)
 - `kubectl delete deployment` / `kubectl delete pvc` / `kubectl delete statefulset`
-- Any `kubectl` command outside namespace `dev`
+- Any `kubectl` command outside namespace `taskmanager-dev`
 - Any `aws`, `terraform`, or `helm upgrade/uninstall` commands
 
 If the fix is RISKY: write the proposed commands as a code block. Do not run them.
@@ -119,7 +119,7 @@ Never omit the Discord post — even if all diagnostics failed, post what you fo
 ## Rules
 
 1. Do NOT modify resources outside the SAFE list
-2. Do NOT touch any namespace other than `dev` (or the namespace in the alert)
+2. Do NOT touch any namespace other than `taskmanager-dev` (or the namespace in the alert)
 3. Do NOT delete data (PVCs, StatefulSets, Secrets)
 4. ALWAYS post to Discord — success, failure, or uncertainty
 5. One investigation per invocation — do not loop or retry
