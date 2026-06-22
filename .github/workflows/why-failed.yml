@@ -1,0 +1,44 @@
+name: CI Failure Triage (Agent B)
+
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  triage:
+    if: |
+      startsWith(github.event.comment.body, '/why-failed') &&
+      github.event.issue.pull_request != null
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      actions: read
+
+    steps:
+      - name: Find latest failed run for this PR
+        id: run
+        run: |
+          PR_DATA=$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.issue.number }}")
+          HEAD_REF=$(echo "$PR_DATA" | jq -r '.head.ref')
+          RUN_ID=$(gh run list \
+            --repo "${{ github.repository }}" \
+            --branch "$HEAD_REF" \
+            --status failure \
+            --limit 1 \
+            --json databaseId \
+            --jq '.[0].databaseId')
+          if [ -z "$RUN_ID" ] || [ "$RUN_ID" = "null" ]; then
+            echo "No failed run found for branch $HEAD_REF — nothing to triage."
+            exit 1
+          fi
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Notify fleet agent
+        run: |
+          curl -s -f -X POST "${{ secrets.FLEET_WEBHOOK_URL }}/ci-failed" \
+            -H 'Content-Type: application/json' \
+            -d "{\"repo\":\"${{ github.repository }}\",\"pr_number\":${{ github.event.issue.number }},\"run_id\":${{ steps.run.outputs.run_id }}}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

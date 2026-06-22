@@ -1,0 +1,47 @@
+name: IaC Plan Review (Agent C)
+
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  plan-review:
+    if: |
+      startsWith(github.event.comment.body, '/review-plan') &&
+      github.event.issue.pull_request != null
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+      actions: read
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/pull/${{ github.event.issue.number }}/head
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_PLAN_ROLE }}
+          aws-region: eu-central-1
+
+      - uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform init + plan
+        working-directory: iac/terraform/dev
+        run: |
+          terraform init -reconfigure
+          terraform plan -no-color > plan.txt 2>&1 || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: terraform-plan
+          path: iac/terraform/dev/plan.txt
+          retention-days: 1
+
+      - name: Notify fleet agent
+        run: |
+          curl -s -f -X POST "${{ secrets.FLEET_WEBHOOK_URL }}/iac-plan-review" \
+            -H 'Content-Type: application/json' \
+            -d "{\"repo\":\"${{ github.repository }}\",\"pr_number\":${{ github.event.issue.number }},\"run_id\":${{ github.run_id }}}"

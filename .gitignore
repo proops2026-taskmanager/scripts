@@ -38,3 +38,6 @@ memory/*
 !memory/git-workflows.md
 # Exception: github-actions.md is the CI/CD reference doc (AC-08 — IRD-31)
 !memory/github-actions.md
+# Exception: day-36 test results are part of the capstone deliverable
+!memory/day-36-substrate.md
+!memory/day-36-fleet-tests.md
