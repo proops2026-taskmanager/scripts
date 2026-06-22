@@ -41,3 +41,5 @@ memory/*
 # Exception: day-36 test results are part of the capstone deliverable
 !memory/day-36-substrate.md
 !memory/day-36-fleet-tests.md
+# Exception: memory index maps all knowledge files
+!memory/INDEX.md
