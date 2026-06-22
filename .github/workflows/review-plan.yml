@@ -6,9 +6,7 @@ on:
 
 jobs:
   plan-review:
-    if: |
-      startsWith(github.event.comment.body, '/review-plan') &&
-      github.event.issue.pull_request != null
+    if: "startsWith(github.event.comment.body, '/review-plan') && github.event.issue.pull_request != null"
     runs-on: ubuntu-latest
     permissions:
       contents: read
