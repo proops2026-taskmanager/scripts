@@ -1,0 +1,30 @@
+Terraform used the selected providers to generate the following execution plan.
+Resource actions are indicated with the following symbols:
+  + create
+  ~ update in-place
+
+Terraform will perform the following actions:
+
+  # aws_security_group_rule.app_ingress_all will be created
+  + resource "aws_security_group_rule" "app_ingress_all" {
+      + cidr_blocks              = [
+          + "0.0.0.0/0",
+        ]
+      + from_port                = 0
+      + to_port                  = 65535
+      + protocol                 = "-1"
+      + security_group_id        = "sg-0adb54da9bd96f4b1"
+      + type                     = "ingress"
+      + id                       = (known after apply)
+    }
+
+  # aws_instance.app will be updated in-place
+  ~ resource "aws_instance" "app" {
+      ~ instance_type = "t3.small" -> "t3.medium"
+        id            = "i-0f277a90657999094"
+        tags          = {
+          "Name" = "chautv-capstone-dev-ec2-euc1-app"
+        }
+    }
+
+Plan: 1 to add, 1 to change, 0 to destroy.
