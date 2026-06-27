@@ -52,10 +52,11 @@ def _is_noisy(raw: bytes) -> bool:
 
 def dispatch(skill: str, payload: dict):
     ph     = hashlib.sha256(json.dumps(payload).encode()).hexdigest()[:12]
+    skill_path = os.path.join(REPO_ROOT, ".claude", "skills", f"{skill}.md")
     prompt = (
-        f"Run the {skill} skill.\n\n"
-        f"PAYLOAD:\n{json.dumps(payload, indent=2)}\n\n"
-        "Proceed step by step as described in the skill."
+        f"Read the skill file at `{skill_path}` and follow its instructions exactly.\n\n"
+        f"PAYLOAD (referred to as PAYLOAD in the skill):\n{json.dumps(payload, indent=2)}\n\n"
+        "Execute every step in the skill file. Do not use the Skill tool — read the file directly."
     )
     proc = subprocess.Popen(
         ["claude", "-p", prompt, "--dangerously-skip-permissions"],
