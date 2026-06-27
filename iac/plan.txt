@@ -1,0 +1,22 @@
+Terraform used the selected providers to generate the following execution plan.
+Resource actions are indicated with the following symbols:
+  ~ update in-place
+
+Terraform will perform the following actions:
+
+  # aws_instance.app will be updated in-place
+  ~ resource "aws_instance" "app" {
+      ~ tags = {
+          ~ "Env"     = "dev" -> "dev"
+          + "Project" = "proops2026"
+          + "Owner"   = "chau11ece"
+          + "CostCentre" = "training"
+        }
+          id            = "i-0f277a90657999094"
+          instance_type = "t3.small"
+          # (all other attributes unchanged)
+      }
+
+Plan: 0 to add, 1 to change, 0 to destroy.
+
+Note: You didn't use the -out option to save this plan, so Terraform can't guarantee to take exactly these actions if you run "terraform apply" now.
