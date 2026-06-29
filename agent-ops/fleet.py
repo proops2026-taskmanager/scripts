@@ -22,7 +22,8 @@ REPO_ROOT = os.environ.get(
     "REPO_ROOT",
     os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 )
-LOG_FILE  = os.path.join(os.path.dirname(__file__), "fleet.log")
+LOG_FILE   = os.path.join(os.path.dirname(__file__), "fleet.log")
+WATCH_FILE = os.path.join(os.path.dirname(__file__), "state", "watch.jsonl")
 
 ROUTES = {
     "/alert":           "triage-runtime-alert",
@@ -48,6 +49,22 @@ def _is_noisy(raw: bytes) -> bool:
             _log(f"[noise-gated] hash={key[:12]} hits={len(hits)}")
             return True
     return False
+
+
+def get_recent_watches(within_minutes: int = 30) -> list:
+    cutoff = time.time() - (within_minutes * 60)
+    if not os.path.exists(WATCH_FILE):
+        return []
+    entries = []
+    with open(WATCH_FILE) as f:
+        for line in f:
+            try:
+                entry = json.loads(line.strip())
+                if entry.get("ts", 0) > cutoff:
+                    entries.append(entry)
+            except json.JSONDecodeError:
+                pass
+    return entries
 
 
 def dispatch(skill: str, payload: dict):
@@ -85,6 +102,28 @@ class FleetHandler(http.server.BaseHTTPRequestHandler):
 
     def do_POST(self):
         raw = self.rfile.read(int(self.headers.get("Content-Length", "0")))
+
+        if self.path == "/watch":
+            try:
+                payload = json.loads(raw.decode("utf-8", errors="replace"))
+                entry = {
+                    "sha":       payload.get("sha", ""),
+                    "reason":    payload.get("reason", ""),
+                    "posted_by": payload.get("posted_by", ""),
+                    "ts":        time.time(),
+                }
+                os.makedirs(os.path.dirname(WATCH_FILE), exist_ok=True)
+                with open(WATCH_FILE, "a") as f:
+                    f.write(json.dumps(entry) + "\n")
+                _log(f"[watch] sha={entry['sha'][:8]} posted_by={entry['posted_by']}")
+            except Exception as e:
+                _log(f"[watch-error] {e}")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(b'{"ok": true}')
+            return
+
         self.send_response(200)   # always ack — prevents GHA/Grafana retry loops
         self.end_headers()
 

@@ -43,7 +43,19 @@ Common first-failure signatures:
 gh pr comment <PAYLOAD.pr_number> --repo <PAYLOAD.repo> --body "<3-line diagnosis>"
 ```
 
-**Step 5.** Stop. One failing step identified = job done.
+**Step 5.** If and only if root cause class is `test`: post a watch hint so Agent A can correlate.
+```bash
+# Get the commit SHA for this run
+SHA=$(gh run view <PAYLOAD.run_id> --repo <PAYLOAD.repo> --json headSha --jq '.headSha')
+
+# Post to the fleet blackboard
+curl -s -X POST http://localhost:9999/watch \
+  -H "Content-Type: application/json" \
+  -d "{\"sha\":\"$SHA\",\"reason\":\"skipped test gate — dangerous image built\",\"posted_by\":\"agent-b\"}"
+```
+Skip Step 5 entirely if root cause class is `lint`, `build`, or `deploy`.
+
+**Step 6.** Stop. One failing step identified = job done.
 
 ---
 

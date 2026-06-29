@@ -19,6 +19,41 @@ Payload fields (all inside the `PAYLOAD` JSON you received):
 ---
 
 ## Steps (execute in order, do not skip)
+
+### Step 0 — Check blackboard for prior Agent B warnings
+
+Before any kubectl work, read the watch blackboard:
+```bash
+cat agent-ops/state/watch.jsonl 2>/dev/null
+```
+
+Filter entries from the last 30 minutes:
+```bash
+python3 -c "
+import json, time
+cutoff = time.time() - 1800
+try:
+    for line in open('agent-ops/state/watch.jsonl'):
+        e = json.loads(line.strip())
+        if e.get('ts', 0) > cutoff:
+            print(e['sha'][:8], e['reason'], e['posted_by'])
+except: pass
+"
+```
+
+Also get the image tag of the affected pod (extract the short SHA after `:`):
+```bash
+NS=$(echo "$PAYLOAD" | python3 -c "import sys,json; p=json.load(sys.stdin); print(p.get('alerts',[p])[0].get('labels',{}).get('namespace','taskmanager-dev'))")
+kubectl get pods -n $NS -o jsonpath='{.items[*].spec.containers[*].image}' 2>/dev/null
+```
+
+**Decision:** If any watch entry's `sha` (first 8 chars) matches any pod image tag's short SHA:
+- Set `WATCH_CONTEXT = "⚠️ Agent B previously flagged SHA <sha>: <reason>"`
+
+If no match or blackboard empty: `WATCH_CONTEXT = ""` — proceed normally.
+
+---
+
 ### Step 1 — Read the runbook
 
 Open the file at `PAYLOAD.alerts[0].RUNBOOK_PATH`. If empty or missing, use generic kubectl diagnostics below.
@@ -64,9 +99,34 @@ Record: status before / action taken / status after / did it improve (YES/NO/PAR
 
 ### Step 7 — Post to Discord
 
+Build the message body. If `WATCH_CONTEXT` is non-empty, include it on its own line after **Diagnosis**:
+
+```
+🤖 **AI Investigator** triggered by: <summary>
+
+**Diagnosis:** <cause>
+<WATCH_CONTEXT if non-empty>
+**Action:** <taken or proposed>
+**Verification:** <before→after, improved?>
+**Confidence:** <low|medium|high> — <1 sentence>
+**Runbook:** <runbook_url>
+```
+
+Example with prior Agent B warning:
+```
+🤖 **AI Investigator** triggered by: HighErrorRate on api
+
+**Diagnosis:** All api pods crashed after latest deploy
+⚠️ Agent B previously flagged SHA 4635de3d: skipped test gate — dangerous image built
+**Action:** PROPOSED — kubectl rollout undo deployment/api -n taskmanager-dev
+**Verification:** pods were 0/1 Running → rollback proposed (not yet applied)
+**Confidence:** high — broken image matches Agent B's warning
+**Runbook:** https://...
+```
+
 ```bash
 curl -s -H "Content-Type: application/json" \
-  -d '{"content": "🤖 **AI Investigator** triggered by: <summary>\n\n**Diagnosis:** <cause>\n**Action:** <taken or proposed>\n**Verification:** <before→after, improved?>\n**Confidence:** <low|medium|high> — <1 sentence>\n**Runbook:** <runbook_url>"}' \
+  -d "{\"content\": \"<full message above as a single string>\"}" \
   "$PAYLOAD_DISCORD_WEBHOOK_URL"
 ```
 
