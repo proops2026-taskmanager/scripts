@@ -41,5 +41,10 @@ memory/*
 # Exception: day-36 test results are part of the capstone deliverable
 !memory/day-36-substrate.md
 !memory/day-36-fleet-tests.md
+# Exception: day-37 fleet drill notes — INDEX.md references this, must be tracked
+!memory/day-37-fleet-drill-notes.md
+# Exception: EKS/K8s reference docs — INDEX.md references these, must be tracked
+!memory/eks-practice.md
+!memory/kubernetes-project.md
 # Exception: memory index maps all knowledge files
 !memory/INDEX.md

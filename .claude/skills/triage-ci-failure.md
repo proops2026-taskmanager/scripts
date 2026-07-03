@@ -8,28 +8,17 @@ Your job: identify the FIRST failing step, determine its root cause, post a 3-li
 ## Trigger
 
 PR comment `/why-failed` → GHA `why-failed.yml` → fleet `/ci-failed`.
-
-Payload fields:
-- `PAYLOAD.repo` — `owner/repo`
-- `PAYLOAD.pr_number` — integer
-- `PAYLOAD.run_id` — integer (GitHub Actions run ID)
+Payload: `PAYLOAD.repo` (`owner/repo`), `PAYLOAD.pr_number`, `PAYLOAD.run_id`.
 
 ---
 
 ## Your job (≤ 5 min budget, then stop)
 
-**Step 1.** Fetch the failed run log:
-```bash
-gh run view <PAYLOAD.run_id> --log-failed --repo <PAYLOAD.repo>
-```
+**Step 1.** Fetch the failed run log: `gh run view <PAYLOAD.run_id> --log-failed --repo <PAYLOAD.repo>`
 
-**Step 2.** Identify the FIRST failed step. Stop at the first red-X step — do NOT enumerate the cascade.
-
-Common first-failure signatures:
-- `lint`: `<file>:<line>: <rule>` e.g. `main.py:42 — E501 line too long`
-- `test`: `FAILED tests/<file>.py::<TestName> — AssertionError: <message>`
-- `build`: `Step N/N — RUN <cmd>` followed by `ERROR: <message>`
-- `deploy`: `Error from server: ...` or `ImagePullBackOff`
+**Step 2.** Identify the FIRST failed step. Stop at the first red-X — do NOT enumerate the cascade.
+Signatures: `lint` → `<file>:<line>: <rule>` · `test` → `FAILED tests/... AssertionError` ·
+`build` → `Step N/N — RUN <cmd>` then `ERROR` · `deploy` → `Error from server` / `ImagePullBackOff`.
 
 **Step 3.** Compose a 3-line diagnosis:
 ```

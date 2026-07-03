@@ -1,48 +1,62 @@
-# Memory Index — Task Management System
+# Memory Index — proops2026-taskmanager
 
-> This file maps all in-repo knowledge files under `memory/`.
-> Update it whenever a new memory file is added or a topic changes significantly.
+> Map of everything under `memory/`. Update this whenever a file is added or
+> a topic changes. Don't duplicate file contents here — pointers only.
 
----
+## System
 
-## Infrastructure & Cloud
+| File | Topic |
+|------|-------|
+| [eks-practice.md](eks-practice.md) | EKS cluster setup, node groups, kubeconfig (historical — no EKS cluster is live today) |
+| [kubernetes-project.md](kubernetes-project.md) | K8s manifests, namespaces, Deployments, Services |
 
-| File | Topic | Last Updated |
-|------|-------|-------------|
-| [eks-practice.md](eks-practice.md) | EKS cluster setup, node groups, kubeconfig | Day 24+ |
-| [kubernetes-project.md](kubernetes-project.md) | K8s manifests, namespaces, Deployments, Services | Day 22+ |
+## Operations
+
+- Dashboard: https://chau11ece.grafana.net/d/taskmanager-red-eks-d45 (Errors/RED panel first)
+- Alert rules: `High5xxErrorRate` → `runbooks/high-5xx.md`; `PodRestartLoop` → `runbooks/pod-restart-loop.md`
+- Demo centerpiece: `capstone-fleet-drill-final.mp4` — lives in the hub repo
+  `chautv-proops2026` (commit `0489108`), not duplicated here
 
 ## CI/CD & Git
 
-| File | Topic | Last Updated |
-|------|-------|-------------|
-| [github-actions.md](github-actions.md) | GHA workflows, branch protection, matrix jobs | Day 31 |
-| [git-workflows.md](git-workflows.md) | Branch strategy, PR flow, merge rules | Day 23 |
+| File | Topic |
+|------|-------|
+| [github-actions.md](github-actions.md) | GHA workflows, branch protection, matrix jobs |
+| [git-workflows.md](git-workflows.md) | Branch strategy, PR flow, merge rules |
 
 ## Agent Fleet
 
-| File | Topic | Last Updated |
-|------|-------|-------------|
-| [day-36-substrate.md](day-36-substrate.md) | EC2 + k3s substrate check, fleet.py startup, ngrok URL | Day 36 (2026-06-22) |
-| [day-36-fleet-tests.md](day-36-fleet-tests.md) | Agent A/B/C test matrix — 6 cases, Expected/Actual/Pass | Day 36 (2026-06-22) |
-
-### Agent Fleet Architecture
+| File | Topic |
+|------|-------|
+| [day-36-substrate.md](day-36-substrate.md) | EC2 + k3s substrate check, fleet.py startup, ngrok URL |
+| [day-36-fleet-tests.md](day-36-fleet-tests.md) | Agent A/B/C test matrix — 6 cases |
+| [day-37-fleet-drill-notes.md](day-37-fleet-drill-notes.md) | Blackboard pattern proof + operational gotchas (OAuth wipe, image retagging, containerd stale cache) |
 
 ```
-fleet.py (port 9999, ngrok tunnel)
-  ├── /alert        → skill: triage-runtime-alert  (Agent A)
-  ├── /ci-failed    → skill: triage-ci-failure      (Agent B)
-  └── /iac-plan-review → skill: review-iac-plan     (Agent C)
-
-GHA Triggers:
-  why-failed.yml    → issue_comment /why-failed  → POST /ci-failed
-  review-plan.yml   → issue_comment /review-plan → POST /iac-plan-review
+fleet.py (port 9999, ngrok tunnel) — started via ~/fleet-start.sh on the EC2 box
+  ├── /alert            → triage-runtime-alert  (Agent A — runtime triage)
+  ├── /ci-failed        → triage-ci-failure      (Agent B — CI triage)
+  └── /iac-plan-review  → review-iac-plan        (Agent C — terraform review)
+blackboard: agent-ops/state/watch.jsonl (Agent B writes, Agent A reads, 30-min window)
 ```
 
-### Key Constraints
+## Runbooks (in `/runbooks`)
 
-- `fleet.py` must run on `develop` branch — skill files only exist on `develop`
-- ngrok URL rotates each session — update `FLEET_WEBHOOK_URL` GitHub secret after every `ngrok start`
-- k3s kubeconfig at `~/.kube/k3s-capstone.yaml`, needs `insecure-skip-tls-verify: true` (cert SAN is 127.0.0.1)
-- EC2 `i-0f277a90657999094` — stop after each session to save cost
-- SG port 6443 CIDR must match current laptop IP — update each session if IP changes
+- `high-5xx.md` — first response for elevated 5xx alerts (namespace `app`, deployment `capstone-app`)
+- `pod-restart-loop.md` — first response for CrashLoop/restart alerts
+
+## Skills (in `/.claude/skills`)
+
+- `triage-runtime-alert.md`, `triage-ci-failure.md`, `review-iac-plan.md` — see CLAUDE.md's Agent Fleet table for routing
+
+## Key Constraints
+
+- `fleet.py` runs only on `develop` — skill files only exist there
+- ngrok URL is stable via reserved authtoken domain (`ovary-stifling-feline.ngrok-free.dev`)
+- k3s kubeconfig at `/etc/rancher/k3s/k3s.yaml` is root-owned — `ec2-user` needs `sudo kubectl`
+- EC2 `i-0f277a90657999094` — stop after every session to save cost
+- No EKS cluster is currently live — `app-cd-staging.yml`/`app-cd-prod.yml` will fail if triggered
+
+## Archive
+
+- `day-N-*` per-day notes — kept for reference, not canonical
