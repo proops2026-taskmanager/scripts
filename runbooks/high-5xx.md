@@ -1,10 +1,10 @@
 # Runbook: High 5xx Error Rate
 
-**Alert name:** High 5xx Error Rate
+**Alert name:** High5xxErrorRate
 **Severity:** critical
-**Service:** api-gateway
-**Namespace:** dev
-**Grafana panel:** Error Rate (RED dashboard)
+**Service:** capstone-app
+**Namespace:** app (k3s, EC2 `i-0f277a90657999094`)
+**Grafana panel:** Errors (RED dashboard)
 
 ---
 
@@ -20,39 +20,33 @@ The percentage of HTTP responses with status 5xx (500, 502, 503, 504) has exceed
 
 | # | Cause | Signal |
 |---|-------|--------|
-| 1 | **Bad deployment** — recent image push introduced a bug or bad config | `kubectl rollout history` shows recent revision; errors started at deploy time |
+| 1 | **Bad deployment** — a flagged/dangerous image was deployed anyway | `kubectl rollout history` shows a recent revision; check `agent-ops/state/watch.jsonl` for a matching SHA |
 | 2 | **Pod crash / OOMKilled** — pod running out of memory and restarting | `kubectl describe pod` shows OOMKilled; `kubectl logs --previous` has crash trace |
-| 3 | **Database unreachable** — task-db or user-db pod not ready | `kubectl get pods` shows db pod Pending or CrashLoop; app logs show "ECONNREFUSED" |
-| 4 | **Zero replicas** — deployment scaled down accidentally | `kubectl get deploy` shows 0/0 READY |
-| 5 | **Config error** — wrong env var (bad DB URL, missing JWT_SECRET) | App logs show "Cannot read property of undefined" or "missing env" |
+| 3 | **Zero replicas** — deployment scaled down accidentally | `kubectl get deploy` shows 0/0 READY |
+| 4 | **Config error** — wrong env var | App logs show "Cannot read property of undefined" or "missing env" |
 
 ---
 
 ## Diagnostic Commands (run in order)
 
 ```bash
-# 1. Overall pod health in dev namespace
-kubectl get pods -n dev
+# 1. Overall pod health
+kubectl get pods -n app
 
-# 2. Check recent deployments — correlate timing with alert
-kubectl rollout history deployment/api-gateway -n dev
-kubectl rollout history deployment/task-service -n dev
-kubectl rollout history deployment/user-service -n dev
+# 2. Check the blackboard for a prior Agent B warning on this SHA
+cat agent-ops/state/watch.jsonl
 
-# 3. Describe the api-gateway pod for events (OOMKilled, image pull errors)
-kubectl describe pod -l app=api-gateway -n dev
+# 3. Check recent deployments — correlate timing with alert
+kubectl rollout history deployment/capstone-app -n app
 
-# 4. Check api-gateway logs — look for error stack traces
-kubectl logs -l app=api-gateway -n dev --tail=100
+# 4. Describe the pod for events (OOMKilled, image pull errors)
+kubectl describe pod -l app=capstone-app -n app
 
-# 5. Check previous container logs if it restarted
-kubectl logs -l app=api-gateway -n dev --previous --tail=100
+# 5. Check logs — look for error stack traces
+kubectl logs -l app=capstone-app -n app --tail=100
+kubectl logs -l app=capstone-app -n app --previous --tail=100
 
-# 6. Check database pod health
-kubectl get pods -l app=task-db -n dev
-kubectl get pods -l app=user-db -n dev
-
-# 7. Correlate with recent git commits
+# 6. Correlate with recent git commits
 git log --oneline --since="20 minutes ago"
 ```
 
@@ -60,28 +54,27 @@ git log --oneline --since="20 minutes ago"
 
 ## Fix Actions
 
-### Class 1 — SAFE (agent executes autonomously)
+### Class 1 — SAFE (when kubectl is reachable — see CLAUDE.md's kubectl note)
 
 **If cause = bad deployment (recent rollout):**
 ```bash
-kubectl rollout undo deployment/api-gateway -n dev
-# Verify recovery:
-kubectl rollout status deployment/api-gateway -n dev
+kubectl rollout undo deployment/capstone-app -n app
+kubectl rollout status deployment/capstone-app -n app
 ```
 
 **If cause = OOMKilled / pod crash:**
 ```bash
-kubectl rollout restart deployment/api-gateway -n dev
+kubectl rollout restart deployment/capstone-app -n app
 ```
 
 **If cause = zero replicas:**
 ```bash
-kubectl scale deployment/api-gateway --replicas=1 -n dev
+kubectl scale deployment/capstone-app --replicas=1 -n app
 ```
 
 **If cause = single bad pod (others healthy):**
 ```bash
-kubectl delete pod <pod-name> -n dev
+kubectl delete pod <pod-name> -n app
 # K8s recreates it automatically
 ```
 
@@ -90,14 +83,7 @@ kubectl delete pod <pod-name> -n dev
 **If cause = config error (wrong env var in ConfigMap):**
 ```bash
 # DO NOT RUN — propose as PR
-kubectl edit configmap api-gw-cm -n dev
-# Change: <key>=<correct-value>
-```
-
-**If cause = database down (needs PVC or StatefulSet fix):**
-```bash
-# DO NOT RUN — propose as PR
-# Requires investigation of StatefulSet and PVC state
+kubectl edit configmap capstone-app-cm -n app
 ```
 
 ---
@@ -106,13 +92,8 @@ kubectl edit configmap api-gw-cm -n dev
 
 After taking action, wait 30 seconds then:
 ```bash
-# Pod count should be X/X Ready
-kubectl get pods -n dev
-
-# Error rate should drop — check Grafana dashboard
-# Or curl the health endpoint:
-kubectl port-forward svc/api-gateway 8080:8080 -n dev &
-curl localhost:8080/health
+kubectl get pods -n app
+# Error rate should drop — check the Grafana Errors panel
 ```
 
 **Success:** Error rate returns to < 1% within 60 seconds of action.
@@ -127,8 +108,8 @@ curl localhost:8080/health
 # Metric: sum(rate(http_requests_total{status=~"5.."}[2m])) / sum(rate(http_requests_total[2m]))
 # Threshold: > 0.05 (5%)
 # For: 2m
-# Labels: severity=critical, failure_mode=high-error-rate, namespace=taskmanager-dev
+# Labels: severity=critical, failure_mode=high-error-rate, namespace=app, service=capstone-app
 # Annotations:
-#   summary: "High 5xx Error Rate on api-gateway"
-#   runbook_url: "https://github.com/chau11ece/proops2026-taskmanager/blob/main/runbooks/high-error-rate.md"
+#   summary: "High 5xx Error Rate on capstone-app"
+#   runbook_url: "https://github.com/proops2026-taskmanager/scripts/blob/main/runbooks/high-5xx.md"
 ```
