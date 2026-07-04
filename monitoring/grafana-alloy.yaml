@@ -1,0 +1,87 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alloy-config
+  namespace: kube-system
+data:
+  config.alloy: |
+    prometheus.scrape "kube_state_metrics" {
+      targets = [
+        {"__address__" = "kube-state-metrics.kube-system.svc.cluster.local:8080"},
+      ]
+      forward_to      = [prometheus.remote_write.grafana_cloud.receiver]
+      scrape_interval = "60s"
+    }
+
+    prometheus.scrape "capstone_app" {
+      targets = [
+        {"__address__" = "capstone-app.app.svc.cluster.local:80"},
+      ]
+      forward_to      = [prometheus.remote_write.grafana_cloud.receiver]
+      scrape_interval = "60s"
+    }
+
+    prometheus.remote_write "grafana_cloud" {
+      endpoint {
+        url = "https://prometheus-prod-37-prod-ap-southeast-1.grafana.net/api/prom/push"
+
+        basic_auth {
+          username = sys.env("GRAFANA_CLOUD_USERNAME")
+          password = sys.env("GRAFANA_CLOUD_PASSWORD")
+        }
+
+        write_relabel_config {
+          source_labels = ["__name__"]
+          regex         = "up|kube_pod_container_status_restarts_total|kube_pod_info|http_requests_total"
+          action        = "keep"
+        }
+      }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana-alloy
+  namespace: kube-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana-alloy
+  template:
+    metadata:
+      labels:
+        app: grafana-alloy
+    spec:
+      containers:
+        - name: alloy
+          image: grafana/alloy:v1.17.1
+          args:
+            - "run"
+            - "/etc/alloy/config.alloy"
+            - "--storage.path=/var/lib/alloy/data"
+          env:
+            - name: GRAFANA_CLOUD_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: grafana-cloud-prom
+                  key: username
+            - name: GRAFANA_CLOUD_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: grafana-cloud-prom
+                  key: password
+          volumeMounts:
+            - name: config
+              mountPath: /etc/alloy
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 150Mi
+      volumes:
+        - name: config
+          configMap:
+            name: alloy-config
