@@ -65,4 +65,13 @@ that's actually where the `High 5xx Error Rate` alert's original
 - `http_requests_total{status="200"}` — returning data (`/health`, `/`)
 - `High 5xx Error Rate` — state: normal
 - `PodRestartLoop` — state: normal
+
+## Grafana rule config note
+
+`High 5xx Error Rate`'s "Alert state if no data" is set to **OK** (not the
+default "No Data"). With zero 5xx traffic, the `status=~"5.."` numerator
+genuinely has no series — that's the healthy case, not an unknown/broken
+one, so NoData would misreport a healthy demo as ambiguous. `PodRestartLoop`
+doesn't need this since `kube_pod_container_status_restarts_total` always
+has a series (value 0 when nothing is restarting).
 - Remote-write: 0 failed samples, allowlist correctly dropping non-matching series
