@@ -1,5 +1,18 @@
 # Git Workflows — proops2026-taskmanager
 
+> **⚠️ Status: partially superseded.** This file documents the Day 30/IRD-30
+> decision (GitHub Flow — `main` always deployable, `feature/*` branches only).
+> In practice the project grew a `develop` integration branch that most
+> `feature/*` work merges into first (confirmed via `git branch -a`, 2026-07-05),
+> matching **CLAUDE.md's CI/CD section**, which is the authoritative, current
+> description of the pipeline (`feature/* → develop → release → main`).
+> The commit format, PR/review rules, and branch-protection settings below are
+> still accurate and in effect. One gap CLAUDE.md doesn't call out: the
+> `release` branch that `app-cd-staging.yml` triggers on has never actually
+> been created (confirmed via `git branch -a` / `git log origin/release` —
+> no such ref exists), which is a more fundamental reason staging CD has never
+> run than the missing `STAGING_BASE_URL`/`KUBE_CONFIG_DATA_STAGING` secrets alone.
+
 ## Group
 
 - **Partners:** chau11ece + walter-dmt88

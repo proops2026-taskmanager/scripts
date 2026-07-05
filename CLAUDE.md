@@ -67,8 +67,11 @@ a panel value blindly.
   (`app-cd-dev.yml`, hits `DEV_BASE_URL`, a live ELB).
 - Merge `develop`→`release` → `app-cd-staging.yml` builds once via
   `reusable-build.yml@v2` and deploys the same SHA-tagged image via
-  `reusable-deploy.yml@v2` — **currently non-functional**: `STAGING_BASE_URL`
-  and `KUBE_CONFIG_DATA_STAGING` are not configured and no EKS cluster exists
+  `reusable-deploy.yml@v2` — **currently non-functional**: the `release`
+  branch itself has never been created (`git branch -a` / `git log
+  origin/release` → no such ref, confirmed 2026-07-05), so this workflow has
+  never actually fired, on top of `STAGING_BASE_URL` and
+  `KUBE_CONFIG_DATA_STAGING` not being configured and no EKS cluster existing
   (`aws eks list-clusters` → empty). Don't tell anyone this "just works."
 - Merge `release`→`main` → `app-cd-prod.yml`, same pattern plus a human
   approval gate — same missing-EKS blocker as staging.
