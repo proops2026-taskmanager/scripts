@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   ci:
-    uses: chau11ece/proops2026-cicd-platform/.github/workflows/reusable-app-ci.yml@v1
+    uses: chau11ece/proops2026-cicd-platform/.github/workflows/reusable-app-ci.yml@v4
     with:
       push: false
       image-name: ${{ github.repository }}
