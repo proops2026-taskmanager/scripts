@@ -93,11 +93,16 @@ kubectl rollout restart deployment/<n> -n <ns>           — see note below
 kubectl delete pod <n> -n <ns>                           — single pod, k8s recreates
 kubectl scale deployment/<n> --replicas=N                — N = 1..current×2, max 4
 ```
-**Note:** `rollout undo`/`restart` are only SAFE when kubectl can actually
-reach the cluster. Today, `ec2-user` on the fleet box cannot read the
-root-owned `/etc/rancher/k3s/k3s.yaml`, so in practice the agent can only
-PROPOSE these — it cannot execute them. This is a known, accepted gap (same
-one hit in AC-04/AC-05 of DOP-58), not a hidden failure.
+**Note:** `ec2-user` on the fleet box cannot read the root-owned
+`/etc/rancher/k3s/k3s.yaml` directly — but has passwordless `sudo` (member of
+`wheel`), so every kubectl command the agent runs MUST go through
+`sudo kubectl --kubeconfig=/etc/rancher/k3s/k3s.yaml <cmd>` (codified in the
+`triage-runtime-alert` skill, commit `08b8f2c`, 2026-07-05). This was
+previously logged as a known, accepted gap (AC-04/AC-05 of DOP-58) that
+blocked autonomous execution entirely — that was wrong, never actually
+tested with sudo. Verified fixed with two independent clean drills
+(Day 60 dry-run, 2026-07-05): Agent A now executes `rollout undo`/`restart`
+for real, not just proposes them.
 
 **Risky (agent MUST ask first):**
 ```
