@@ -8,6 +8,21 @@ Grafana webhook → fleet `/alert`. Payload (`PAYLOAD` JSON): `DISCORD_WEBHOOK_U
 `alerts[0]` (with `RUNBOOK_PATH`, `labels.{namespace,alertname,service}`,
 `annotations.{summary,description,runbook_url}`).
 
+## kubectl access — always via sudo
+
+`/etc/rancher/k3s/k3s.yaml` is root-owned (`0600`) — `ec2-user` cannot read it
+directly. `ec2-user` has passwordless sudo (member of `wheel`), so every
+kubectl command in this skill MUST be run as:
+```bash
+sudo kubectl --kubeconfig=/etc/rancher/k3s/k3s.yaml <rest of command>
+```
+Do not rely on the `KUBECONFIG` env var alone (sudo does not inherit it) and
+do not attempt plain `kubectl` first — it will always fail with permission
+denied on this box. If `sudo kubectl --kubeconfig=/etc/rancher/k3s/k3s.yaml
+get pods -n kube-system` itself fails, treat that as a genuine infra-level
+kubectl-unavailable condition (see Failure mode), not something to retry
+without sudo.
+
 ## Step 0 — Check blackboard for prior Agent B warnings
 
 Before any kubectl work:
@@ -21,7 +36,7 @@ for line in open('agent-ops/state/watch.jsonl'):
     if e.get('ts', 0) > cutoff: print(e['sha'][:8], e['reason'], e['posted_by'])
 " 2>/dev/null
 NS=$(echo "$PAYLOAD" | python3 -c "import sys,json; p=json.load(sys.stdin); print(p.get('alerts',[p])[0].get('labels',{}).get('namespace','app'))")
-kubectl get pods -n $NS -o jsonpath='{.items[*].spec.containers[*].image}' 2>/dev/null
+sudo kubectl --kubeconfig=/etc/rancher/k3s/k3s.yaml get pods -n $NS -o jsonpath='{.items[*].spec.containers[*].image}' 2>/dev/null
 ```
 If any watch entry's `sha` (first 8) matches a pod image tag's short SHA, set
 `WATCH_CONTEXT = "⚠️ Agent B previously flagged SHA <sha>: <reason>"`. Else `""`.
@@ -32,8 +47,8 @@ Open `PAYLOAD.alerts[0].RUNBOOK_PATH` for Probable Causes / Diagnostic Commands 
 Fix Actions (Class 1 = SAFE, Class 2 = RISKY) and run those. If empty/missing,
 use `namespace` from `PAYLOAD.alerts[0].labels.namespace` (default `app`):
 ```bash
-kubectl get pods -n <namespace>
-kubectl get events -n <namespace> --sort-by='.lastTimestamp' | tail -20
+sudo kubectl --kubeconfig=/etc/rancher/k3s/k3s.yaml get pods -n <namespace>
+sudo kubectl --kubeconfig=/etc/rancher/k3s/k3s.yaml get events -n <namespace> --sort-by='.lastTimestamp' | tail -20
 git log --oneline --since="20 minutes ago"
 ```
 
@@ -41,8 +56,9 @@ git log --oneline --since="20 minutes ago"
 
 One sentence: "Most likely cause: X because Y."
 
-**SAFE — execute autonomously:** `kubectl rollout undo/restart deployment/<n> -n <ns>` ·
-`kubectl delete pod <n> -n <ns>` · `kubectl scale deployment/<n> --replicas=N` (1..current×2, max 4)
+**SAFE — execute autonomously (all via `sudo kubectl --kubeconfig=/etc/rancher/k3s/k3s.yaml`):**
+`rollout undo/restart deployment/<n> -n <ns>` · `delete pod <n> -n <ns>` ·
+`scale deployment/<n> --replicas=N` (1..current×2, max 4)
 
 **RISKY — propose only, do NOT execute:** `kubectl edit configmap/secret` ·
 `kubectl scale --replicas=0` · `kubectl delete deployment/pvc/statefulset` ·
@@ -50,9 +66,11 @@ anything outside the alert namespace · any `aws`/`terraform`/`helm upgrade|unin
 
 ## Step 3 — Take action (or propose), then verify
 
-Run SAFE actions; capture before/after state 30s apart. For RISKY: write
+Run SAFE actions (with `sudo kubectl --kubeconfig=/etc/rancher/k3s/k3s.yaml`);
+capture before/after state 30s apart. For RISKY: write
 `PROPOSED FIX (requires human approval):` + command block — do NOT run it.
-Re-run `kubectl get pods -n <namespace>`; record improved (YES/NO/PARTIAL).
+Re-run `sudo kubectl --kubeconfig=/etc/rancher/k3s/k3s.yaml get pods -n <namespace>`;
+record improved (YES/NO/PARTIAL).
 
 ## Step 4 — Post to Discord
 
