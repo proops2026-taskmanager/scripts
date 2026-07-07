@@ -2,7 +2,7 @@
   "name": "task-manager",
   "version": "1.0.0",
   "scripts": {
-    "test": "echo 'tests passed' && exit 0"
+    "test": "node tests/task-api-ac05.test.js"
   },
   "dependencies": {
 "@tanstack/react-query": "^5.99.1",
