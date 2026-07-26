@@ -1,0 +1,73 @@
+# Environment: prod (EKS — taskmanager-prod cluster)
+# Layer: values.yaml → values-prod.yaml
+# Secrets: INJECT_FROM_VAULT — never store real values in this file.
+# Replicas and resources are raised vs. base values; secrets are placeholders only.
+
+imagePullPolicy: IfNotPresent
+
+userService:
+  replicas: 5
+  secret:
+    databaseUrl: "INJECT_FROM_VAULT"
+    jwtSecret: "INJECT_FROM_VAULT"
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 512Mi
+
+taskService:
+  replicas: 5
+  secret:
+    databaseUrl: "INJECT_FROM_VAULT"
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 512Mi
+
+apiGateway:
+  replicas: 5
+  config:
+    corsOrigin: "https://taskmanager.mu-online.io"
+  secret:
+    jwtSecret: "INJECT_FROM_VAULT"
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 512Mi
+
+frontendService:
+  replicas: 5
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 400m
+      memory: 256Mi
+
+notificationService:
+  replicas: 3
+  secret:
+    databaseUrl: "INJECT_FROM_VAULT"
+    redisUrl: "INJECT_FROM_VAULT"
+    discordWebhookUrl: "INJECT_FROM_VAULT"
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 512Mi
+
+ingress:
+  enabled: true
+  host: "taskmanager.mu-online.io"

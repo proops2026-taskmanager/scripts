@@ -30,7 +30,6 @@ CRAFT-PROMPT-microservice-docs.md
 draft-program/
 demo-repository/
 collections/
-charts/
 # e2e-tests tracked — smoke script needed by CI pipeline
 # Exception: e2e-tests/smoke/ is the UAT smoke suite (AC-05 — IRD-32)
 memory/*

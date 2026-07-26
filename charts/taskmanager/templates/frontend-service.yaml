@@ -1,0 +1,57 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend-service
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: frontend-service
+    {{- include "taskmanager.labels" . | nindent 4 }}
+spec:
+  selector:
+    app: frontend-service
+  ports:
+    - port: {{ .Values.frontendService.port }}
+      targetPort: {{ .Values.frontendService.port }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend-service
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: frontend-service
+    {{- include "taskmanager.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.frontendService.replicas }}
+  selector:
+    matchLabels:
+      app: frontend-service
+  template:
+    metadata:
+      labels:
+        app: frontend-service
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: frontend-service
+                topologyKey: kubernetes.io/hostname
+      containers:
+        - name: frontend-service
+          image: {{ include "taskmanager.image" (dict "svc" .Values.frontendService "global" .Values.global) }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          ports:
+            - containerPort: {{ .Values.frontendService.port }}
+          # No env vars — React SPA uses VITE_API_BASE_URL baked in at image build time
+          resources:
+            {{- toYaml .Values.frontendService.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /
+              port: {{ .Values.frontendService.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 10

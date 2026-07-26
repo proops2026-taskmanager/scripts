@@ -1,0 +1,112 @@
+# ── Global ────────────────────────────────────────────────────────────────────
+# Always: required for ECR rolling updates — kubelet re-checks the registry on
+#         every pod start, which ensures sprint3-* tags are pulled correctly.
+# Override to IfNotPresent in local/minikube envs where images are pre-loaded.
+imagePullPolicy: Always
+
+# global.imageTag: when set, overrides every service's image.tag.
+# Pass at deploy time: --set global.imageTag=sprint3-abc1234
+# Leave empty to use per-service tags defined below.
+global:
+  imageTag: ""
+
+# ── user-service ──────────────────────────────────────────────────────────────
+userService:
+  image:
+    repository: 905418181527.dkr.ecr.eu-central-1.amazonaws.com/user-service
+    tag: sprint3-62950a3
+  replicas: 2
+  port: 3001
+  config:
+    bcryptRounds: "12"
+    jwtExpiresIn: "24h"
+  secret:
+    # Filled per environment via --set or a gitignored values file.
+    databaseUrl: "postgresql://app_user:CHANGEME@CHANGEME.rds.amazonaws.com:5432/users_db"
+    jwtSecret: "CHANGEME"
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+# ── task-service ──────────────────────────────────────────────────────────────
+taskService:
+  image:
+    repository: 905418181527.dkr.ecr.eu-central-1.amazonaws.com/task-service
+    tag: sprint3-5efb799
+  replicas: 2
+  port: 3002
+  secret:
+    databaseUrl: "postgresql://app_user:CHANGEME@CHANGEME.rds.amazonaws.com:5432/tasks_db"
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+# ── api-gateway ───────────────────────────────────────────────────────────────
+apiGateway:
+  image:
+    repository: 905418181527.dkr.ecr.eu-central-1.amazonaws.com/api-gateway
+    tag: sprint3-b40d5b3
+  replicas: 2
+  port: 8080
+  config:
+    corsOrigin: "http://localhost:3000"
+    notificationServiceUrl: "http://notification-service:3003"
+  secret:
+    jwtSecret: "CHANGEME"
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+# ── frontend-service ──────────────────────────────────────────────────────────
+frontendService:
+  image:
+    repository: 905418181527.dkr.ecr.eu-central-1.amazonaws.com/frontend-service
+    tag: sprint3-5253617
+  replicas: 2
+  port: 3000
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+# ── notification-service ──────────────────────────────────────────────────────
+notificationService:
+  image:
+    repository: 905418181527.dkr.ecr.eu-central-1.amazonaws.com/notification-service
+    tag: sprint3-76197f5
+  replicas: 2
+  port: 3003
+  secret:
+    databaseUrl: "postgresql://app_user:CHANGEME@CHANGEME.rds.amazonaws.com:5432/notifications_db"
+    # Redis deployed by Terraform (my-redis Helm release, bitnami chart).
+    # Service name: my-redis-master (bitnami standalone convention).
+    redisUrl: "redis://my-redis-master:6379"
+    discordWebhookUrl: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+# ── Ingress ───────────────────────────────────────────────────────────────────
+ingress:
+  enabled: true
+  className: nginx
+  host: ""   # empty = wildcard (single-env only). Set per environment to avoid path conflicts.

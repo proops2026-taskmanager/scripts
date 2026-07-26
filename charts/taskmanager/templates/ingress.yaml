@@ -1,0 +1,49 @@
+{{- if .Values.ingress.enabled }}
+# Split Ingress pattern (Session 5 lesson): one Ingress per routing group.
+# A single Ingress with rewrite-target is global — it would break frontend asset loading.
+#
+# host: when set, nginx only routes requests with that Host header → no path collision
+#       between dev/staging/prod on the same cluster.
+# host: "" (empty) → wildcard (* ) — accepts all hostnames, only safe with a single release.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: taskmanager-ingress-api
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "taskmanager.labels" . | nindent 4 }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  rules:
+    - host: {{ .Values.ingress.host | default "" | quote }}
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: api-gateway
+                port:
+                  number: {{ .Values.apiGateway.port }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: taskmanager-ingress-frontend
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "taskmanager.labels" . | nindent 4 }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  rules:
+    - host: {{ .Values.ingress.host | default "" | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend-service
+                port:
+                  number: {{ .Values.frontendService.port }}
+{{- end }}

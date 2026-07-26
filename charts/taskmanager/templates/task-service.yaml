@@ -1,0 +1,82 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: task-svc-cm
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: task-service
+    {{- include "taskmanager.labels" . | nindent 4 }}
+data:
+  PORT: {{ .Values.taskService.port | quote }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: task-service
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: task-service
+    {{- include "taskmanager.labels" . | nindent 4 }}
+spec:
+  selector:
+    app: task-service
+  ports:
+    - port: {{ .Values.taskService.port }}
+      targetPort: {{ .Values.taskService.port }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: task-service
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: task-service
+    {{- include "taskmanager.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.taskService.replicas }}
+  selector:
+    matchLabels:
+      app: task-service
+  template:
+    metadata:
+      labels:
+        app: task-service
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: task-service
+                topologyKey: kubernetes.io/hostname
+      containers:
+        - name: task-service
+          image: {{ include "taskmanager.image" (dict "svc" .Values.taskService "global" .Values.global) }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          ports:
+            - containerPort: {{ .Values.taskService.port }}
+          envFrom:
+            - configMapRef:
+                name: task-svc-cm
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: task-svc-secret
+                  key: DATABASE_URL
+          resources:
+            {{- toYaml .Values.taskService.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.taskService.port }}
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.taskService.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 5

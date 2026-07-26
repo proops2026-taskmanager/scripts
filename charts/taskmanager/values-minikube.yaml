@@ -1,0 +1,44 @@
+# Minikube override — local dev, single node
+# Usage: helm install taskmanager ./charts/taskmanager -f values-minikube.yaml -n taskmanager
+#
+# What this overrides vs values.yaml (production defaults):
+#   replicas: 2 → 1      (single node can't spread 2 replicas across hosts)
+#   image: ECR  → local  (images built into minikube docker daemon)
+#   pullPolicy: IfNotPresent → Never  (don't try to pull — use local only)
+#   corsOrigin: production → localhost
+
+imagePullPolicy: Never
+
+userService:
+  image:
+    repository: chaudevops/taskmanager-user-service
+    tag: v1.0.3
+  replicas: 1
+  secret:
+    databaseUrl: "postgresql://app_user:devpass123@db-user:5432/users_db"
+    jwtSecret: "local-dev-jwt-secret-not-for-production"
+
+taskService:
+  image:
+    repository: chaudevops/taskmanager-task-service
+    tag: v1.0.1
+  replicas: 1
+  secret:
+    databaseUrl: "postgresql://app_user:devpass123@db-task:5432/tasks_db"
+
+apiGateway:
+  image:
+    repository: chaudevops/taskmanager-api-gateway
+    tag: v1.0.2
+  replicas: 1
+  config:
+    corsOrigin: "http://localhost:3000"
+
+  secret:
+    jwtSecret: "local-dev-jwt-secret-not-for-production"
+
+frontendService:
+  image:
+    repository: chaudevops/taskmanager-frontend-service
+    tag: v1.0.2
+  replicas: 1

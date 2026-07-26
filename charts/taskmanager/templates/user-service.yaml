@@ -1,0 +1,94 @@
+# ── ConfigMap ─────────────────────────────────────────────────────────────────
+# Non-sensitive config. Safe to store in plain text.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: user-svc-cm
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: user-service
+    {{- include "taskmanager.labels" . | nindent 4 }}
+data:
+  PORT: {{ .Values.userService.port | quote }}
+  BCRYPT_ROUNDS: {{ .Values.userService.config.bcryptRounds | quote }}
+  JWT_EXPIRES_IN: {{ .Values.userService.config.jwtExpiresIn | quote }}
+---
+# ── Service ───────────────────────────────────────────────────────────────────
+# ClusterIP: only reachable inside the cluster (api-gateway calls user-service:3001)
+apiVersion: v1
+kind: Service
+metadata:
+  name: user-service
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: user-service
+    {{- include "taskmanager.labels" . | nindent 4 }}
+spec:
+  selector:
+    app: user-service
+  ports:
+    - port: {{ .Values.userService.port }}
+      targetPort: {{ .Values.userService.port }}
+---
+# ── Deployment ────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-service
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: user-service
+    {{- include "taskmanager.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.userService.replicas }}
+  selector:
+    matchLabels:
+      app: user-service
+  template:
+    metadata:
+      labels:
+        app: user-service
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: user-service
+                topologyKey: kubernetes.io/hostname
+      containers:
+        - name: user-service
+          image: {{ include "taskmanager.image" (dict "svc" .Values.userService "global" .Values.global) }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          ports:
+            - containerPort: {{ .Values.userService.port }}
+          envFrom:
+            - configMapRef:
+                name: user-svc-cm
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: user-svc-secret
+                  key: DATABASE_URL
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: user-svc-secret
+                  key: JWT_SECRET
+          resources:
+            {{- toYaml .Values.userService.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.userService.port }}
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.userService.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 5

@@ -1,0 +1,80 @@
+# Environment: dev (EKS — taskmanager-dev cluster)
+# Layer: values.yaml → values-dev.yaml
+# Secrets: pass real values at deploy time via --set or a gitignored values-dev-secrets.yaml
+# Example deploy command:
+#   helm upgrade --install taskmanager ./charts/taskmanager \
+#     -n taskmanager-dev --create-namespace \
+#     -f charts/taskmanager/values-dev.yaml \
+#     -f charts/taskmanager/values-dev-secrets.yaml   # gitignored
+
+imagePullPolicy: Always
+
+userService:
+  replicas: 1
+  secret:
+    databaseUrl: "postgresql://app_user:CHANGEME@taskmanager-dev-users-db.c1oc0yc8s9e7.eu-central-1.rds.amazonaws.com:5432/users_db"
+    jwtSecret: "CHANGEME"
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+taskService:
+  replicas: 1
+  secret:
+    databaseUrl: "postgresql://app_user:CHANGEME@taskmanager-dev-tasks-db.c1oc0yc8s9e7.eu-central-1.rds.amazonaws.com:5432/tasks_db"
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+apiGateway:
+  replicas: 1
+  config:
+    corsOrigin: "*"   # Dev: open for testing. Tighten to ELB hostname once known.
+  secret:
+    jwtSecret: "CHANGEME"
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+frontendService:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 25m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 64Mi
+
+notificationService:
+  replicas: 1
+  secret:
+    databaseUrl: "postgresql://app_user:CHANGEME@taskmanager-dev-notifications-db.c1oc0yc8s9e7.eu-central-1.rds.amazonaws.com:5432/notifications_db"
+    redisUrl: "redis://my-redis-master:6379"
+    discordWebhookUrl: ""
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+# Dev EKS has ingress-nginx (deployed by Terraform cluster-bootstrap).
+# host: "" = wildcard — safe since dev has its own cluster.
+# Access: http://<ELB-hostname>/api/...  and  http://<ELB-hostname>/
+ingress:
+  enabled: true
+  host: ""

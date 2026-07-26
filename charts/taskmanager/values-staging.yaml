@@ -1,0 +1,35 @@
+# Environment: staging (EKS — taskmanager-staging cluster)
+# Layer: values.yaml → values-staging.yaml
+# Secrets: pass real values at deploy time via --set or a gitignored values-staging-secrets.yaml
+
+userService:
+  replicas: 2
+  secret:
+    databaseUrl: "postgresql://app_user:CHANGEME@CHANGEME.rds.amazonaws.com:5432/users_db"
+    jwtSecret: "CHANGEME"
+
+taskService:
+  replicas: 2
+  secret:
+    databaseUrl: "postgresql://app_user:CHANGEME@CHANGEME.rds.amazonaws.com:5432/tasks_db"
+
+apiGateway:
+  replicas: 2
+  config:
+    corsOrigin: "http://staging.taskmanager.internal"
+  secret:
+    jwtSecret: "CHANGEME"
+
+frontendService:
+  replicas: 2
+
+notificationService:
+  replicas: 2
+  secret:
+    databaseUrl: "postgresql://app_user:CHANGEME@CHANGEME.rds.amazonaws.com:5432/notifications_db"
+    redisUrl: "redis://my-redis-master:6379"
+    discordWebhookUrl: ""
+
+ingress:
+  enabled: true
+  host: "staging.taskmanager.internal"
